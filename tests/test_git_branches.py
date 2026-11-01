@@ -221,3 +221,17 @@ def test_a_commit_of_a_removed_path_removes_it(
     commit = checkout.commit("Remove the readme", [Path("README.md")])
 
     assert checkout.run("ls-tree", "--name-only", commit) == ""
+
+
+def test_a_remote_branch_s_tip_is_the_commit_pushed(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    assert checkout.remote_branch_tip(published) == checkout.commit_at("HEAD")
+
+
+def test_a_branch_the_remote_lacks_has_no_tip(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    assert (
+        checkout.remote_branch_tip(RemoteBranch(published.remote, "elsewhere")) is None
+    )

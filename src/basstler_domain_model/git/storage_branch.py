@@ -45,12 +45,14 @@ class StorageBranch:
         :return: Whether the branch exists on the remote.
         :raises GitCommandFailed: If the remote cannot be reached.
         """
-        if not self.git.has_remote_branch(self.branch):
+        tip = self.git.remote_branch_tip(self.branch)
+        if tip is None:
             self.git.attempt("update-ref", "-d", self.branch.tracking_reference)
             return False
-        self.git.fetch_branch(
-            self.branch.remote, self.branch.name, self.branch.remote
-        ).raise_if_failed()
+        if self.git.commit_or_none(self.branch.tracking_reference) != tip:
+            self.git.fetch_branch(
+                self.branch.remote, self.branch.name, self.branch.remote
+            ).raise_if_failed()
         return True
 
     def read(self, path: Path) -> str | None:

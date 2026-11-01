@@ -120,3 +120,17 @@ class ClaudeCodeVariable(EnvironmentVariable):
     """
     The bash Claude Code runs its commands in on Windows, when set.
     """
+
+
+# %% git
+
+
+class GitVariable(EnvironmentVariable):
+    """
+    The variables git reads, which a command sets to steer it.
+    """
+
+    INDEX_FILE = "GIT_INDEX_FILE"
+    """
+    The index git builds a tree in, set to keep the checkout's own index untouched.
+    """

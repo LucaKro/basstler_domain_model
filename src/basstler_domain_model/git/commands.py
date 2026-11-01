@@ -8,12 +8,15 @@ place rather than at each call site.
 
 from __future__ import annotations
 
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
 from basstler_domain_model.commands import CommandResult, CommandRunner
+from basstler_domain_model.environment import GitVariable
+from basstler_domain_model.repository import Repository
 from basstler_domain_model.git.exceptions import (
     GitCommandFailed,
     UnresolvableReferenceError,
@@ -77,6 +80,31 @@ class GitCommandResult(CommandResult):
                 arguments=self.arguments,
             )
         return self
+
+
+# %% remotes
+
+
+@dataclass(frozen=True)
+class Remote:
+    """
+    One remote of a checkout, and the GitHub repository it pushes to.
+    """
+
+    name: str
+    """
+    The remote's name in the checkout.
+    """
+
+    push_url: str
+    """
+    The URL a push to it goes to.
+    """
+
+    repository: Repository | None
+    """
+    The repository the push URL names, ``None`` when it names none.
+    """
 
 
 # %% what a push is allowed to overwrite
@@ -306,6 +334,60 @@ class GitCommandRunner:
         return self.attempt(
             "push", "--quiet", *lease, proposed.remote, proposed.refspec
         )
+
+    def remotes(self) -> list[Remote]:
+        """:return: Every remote of the checkout, in the order git lists them."""
+        remotes = []
+        for name in self.run("remote").split():
+            url = self.run("remote", "get-url", "--push", name)
+            repository = (
+                Repository.from_remote_url(url)
+                if Repository.names_a_repository(url)
+                else None
+            )
+            remotes.append(Remote(name, url, repository))
+        return remotes
+
+    def commit_files(
+        self, parent: str | None, files: Mapping[Path, str], message: str
+    ) -> str:
+        """
+        Commit files without checking anything out, in an index of the commit's own.
+
+        :param parent: The commit to build on, ``None`` for a commit with no parent.
+        :param files: The text of each file to write, over the parent's files.
+        :param message: The commit message.
+        :return: The new commit.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            index = {GitVariable.INDEX_FILE: str(Path(directory) / "index")}
+            if parent is not None:
+                self.run("read-tree", parent, environment=index)
+            for path, text in files.items():
+                staged = Path(directory) / "content"
+                staged.write_text(text)
+                blob = self.run("hash-object", "-w", str(staged))
+                self.run(
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    f"100644,{blob},{path}",
+                    environment=index,
+                )
+            tree = self.run("write-tree", environment=index)
+        parents = () if parent is None else ("-p", parent)
+        return self.run("commit-tree", tree, *parents, "-m", message)
+
+    def rebase_stack(self, onto: str, top: str) -> GitCommandResult:
+        """
+        Replay a stack of branches onto a moved base, moving every branch inside it.
+
+        :param onto: The branch the stack is replayed onto.
+        :param top: The topmost branch of the stack, which is checked out afterwards.
+        :return: The finished rebase, whose failure is a conflict only when it left
+            unmerged paths behind.
+        """
+        return self.attempt("rebase", "--update-refs", onto, top)
 
     def contains(self, candidate: str, descendant: str) -> bool:
         """:param candidate: The reference that may be contained.

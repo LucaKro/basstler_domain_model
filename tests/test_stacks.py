@@ -9,13 +9,13 @@ import json
 from http import HTTPStatus
 
 from basstler_domain_model.github.pull_request_fields import PullRequestHeadKey
+from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import GitHubRepository
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import PullRequestState, RestJSONKey
 from basstler_domain_model.repository import Repository
 
 from .dataset.locations import DatasetLocation
-from .replayed_api import RecordedAnswer, ReplayedApi
 
 REPOSITORY = Repository("an-owner", "a-repository")
 """
@@ -86,7 +86,7 @@ def test_the_stack_holding_a_pull_request_is_found_by_it():
     middle = stack.numbers[1]
     path = stacks_path(f"?pull_request={middle}")
     answers = {
-        ("GET", path): RecordedAnswer(
+        ("GET", path): RecordedAnswer.from_file(
             HTTPStatus.OK, DatasetLocation.STACKS_HOLDING_A_PULL_REQUEST
         )
     }
@@ -100,7 +100,7 @@ def test_the_stack_holding_a_pull_request_is_found_by_it():
 def test_a_pull_request_in_no_stack_has_none():
     path = stacks_path("?pull_request=1")
     answers = {
-        ("GET", path): RecordedAnswer(
+        ("GET", path): RecordedAnswer.from_file(
             HTTPStatus.OK, DatasetLocation.STACKS_HOLDING_NOTHING
         )
     }
@@ -112,7 +112,9 @@ def test_a_pull_request_in_no_stack_has_none():
 def test_every_stack_is_listed():
     path = stacks_path("?per_page=100&page=1")
     answers = {
-        ("GET", path): RecordedAnswer(HTTPStatus.OK, DatasetLocation.STACKS_LISTED)
+        ("GET", path): RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.STACKS_LISTED
+        )
     }
 
     with ReplayedApi(answers) as api:
@@ -126,7 +128,7 @@ def test_every_stack_is_listed():
 def test_a_stack_is_read_by_its_number():
     stack = recorded_stack(DatasetLocation.STACK_READ)
     answers = {
-        ("GET", stacks_path(f"/{stack.number}")): RecordedAnswer(
+        ("GET", stacks_path(f"/{stack.number}")): RecordedAnswer.from_file(
             HTTPStatus.OK, DatasetLocation.STACK_READ
         )
     }
@@ -141,7 +143,7 @@ def test_a_stack_is_read_by_its_number():
 def test_creating_a_stack_sends_its_pull_requests_bottom_first():
     created = recorded_stack(DatasetLocation.STACK_CREATED)
     answers = {
-        ("POST", stacks_path()): RecordedAnswer(
+        ("POST", stacks_path()): RecordedAnswer.from_file(
             HTTPStatus.CREATED, DatasetLocation.STACK_CREATED
         )
     }
@@ -159,7 +161,9 @@ def test_growing_a_stack_sends_only_the_new_pull_requests():
     added = grown.numbers[len(created.numbers) :]
     path = stacks_path(f"/{created.number}/add")
     answers = {
-        ("POST", path): RecordedAnswer(HTTPStatus.OK, DatasetLocation.STACK_GROWN)
+        ("POST", path): RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.STACK_GROWN
+        )
     }
 
     with ReplayedApi(answers) as api:

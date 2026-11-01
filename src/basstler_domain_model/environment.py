@@ -81,6 +81,11 @@ class GitHubActionsVariable(EnvironmentVariable):
     The owner of the repository the workflow runs in.
     """
 
+    API_URL = "GITHUB_API_URL"
+    """
+    Where the runner's GitHub answers its REST API.
+    """
+
 
 # %% Claude Code
 

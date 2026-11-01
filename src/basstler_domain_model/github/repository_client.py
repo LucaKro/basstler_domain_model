@@ -10,7 +10,6 @@ caller to perform rather than performed.
 
 from __future__ import annotations
 
-import json
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -22,9 +21,9 @@ from pathlib import Path
 from typing import Any
 
 from basstler_domain_model.environment import GitHubCredentialVariable
+from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.exceptions import (
     GitHubCredentialUnavailableError,
-    GitHubRequestFailed,
 )
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.pull_request_fields import PullRequestPayload
@@ -620,24 +619,4 @@ class GitHubRepository(
         :return: The decoded response, ``None`` when it has no body.
         :raises GitHubRequestFailed: If the API answers with an error status.
         """
-        request = urllib.request.Request(
-            f"{self.api_root}{path}",
-            method=method,
-            data=None if payload is None else json.dumps(payload).encode(),
-            headers={
-                "Authorization": f"Bearer {self.token}",
-                "Accept": "application/vnd.github+json",
-                "Content-Type": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request) as response:
-                body = response.read()
-                return json.loads(body) if body else None
-        except urllib.error.HTTPError as refused:
-            raise GitHubRequestFailed(
-                status=refused.code,
-                detail=refused.read().decode(errors="replace"),
-                method=method,
-                path=path,
-            ) from refused
+        return GitHubApi(self.token, self.api_root).request(method, path, payload)

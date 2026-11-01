@@ -24,37 +24,6 @@ class PullRequestReadError(DataclassException, ABC):
 
 
 @dataclass
-class GitHubCommandFailed(PullRequestReadError):
-    """
-    Raised when the ``gh`` invocation itself exits non-zero.
-    """
-
-    executable: str
-    """
-    The command that was run.
-    """
-
-    exit_code: int
-    """
-    The status it exited with.
-    """
-
-    error_output: str
-    """
-    Whatever it wrote to standard error.
-    """
-
-    def error_message(self) -> str:
-        return f"{self.executable} exited {self.exit_code}: {self.error_output}"
-
-    def suggest_correction(self) -> str:
-        return (
-            "Check that gh is installed and logged in with read access to the "
-            "upstream: gh auth status"
-        )
-
-
-@dataclass
 class GraphQLErrorsReturned(PullRequestReadError):
     """
     Raised when GitHub answers with an ``errors`` array instead of data.

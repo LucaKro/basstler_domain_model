@@ -37,3 +37,38 @@ class DatasetLocation(PathEnumeration):
     """
     A pull request as REST describes it once closed without merging.
     """
+
+    STACK_CREATED = DIRECTORY / "stacks" / "create.json"
+    """
+    A stack of two pull requests, as creating it answered.
+    """
+
+    STACK_GROWN = DIRECTORY / "stacks" / "add.json"
+    """
+    The same stack with a third pull request put on top, as adding it answered.
+    """
+
+    STACK_READ = DIRECTORY / "stacks" / "get.json"
+    """
+    The same stack, read by its number.
+    """
+
+    STACKS_HOLDING_A_PULL_REQUEST = DIRECTORY / "stacks" / "find.json"
+    """
+    The stacks holding the stack's middle pull request: the stack itself.
+    """
+
+    STACKS_HOLDING_NOTHING = DIRECTORY / "stacks" / "find-none.json"
+    """
+    The stacks holding a pull request no stack holds: none.
+    """
+
+    STACKS_LISTED = DIRECTORY / "stacks" / "list.json"
+    """
+    Every stack in the repository, one page.
+    """
+
+    STACK_WITH_ITS_BOTTOM_MERGED = DIRECTORY / "stacks" / "find-bottom-merged.json"
+    """
+    The stack found by pull request, its bottom pull request merged.
+    """

@@ -419,6 +419,8 @@ class RestJSONKey(StrEnum):
     MERGEABLE_STATE = "mergeable_state"
     LOGIN = "login"
     DESCRIPTION = "description"
+    PULL_REQUESTS = "pull_requests"
+    OPEN = "open"
 
 
 # %% pull request mergeability

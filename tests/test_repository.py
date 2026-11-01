@@ -82,3 +82,7 @@ def test_a_job_log_path_is_the_one_the_actions_api_serves_it_from():
         REPOSITORY.job_log_path(7)
         == f"repos/{REPOSITORY.full_name}/actions/jobs/7/logs"
     )
+
+
+def test_a_settings_url_is_the_settings_page_under_the_repository():
+    assert REPOSITORY.settings_url == f"{REPOSITORY.url}/settings"

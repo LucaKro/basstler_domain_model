@@ -29,6 +29,7 @@ from basstler_domain_model.github.exceptions import (
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.pull_request_fields import PullRequestPayload
 from basstler_domain_model.github.pull_request_models import CheckStatus
+from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.rest_models import (
     RestCheckRunPage,
     RestCombinedStatusPage,
@@ -116,6 +117,70 @@ class RepositoryLabels(ABC):
         """:param label: The label to add, created with its description."""
 
 
+@dataclass(frozen=True)
+class PullRequestBaseWriter(ABC):
+    """
+    Retargeting a pull request at another branch.
+    """
+
+    @abstractmethod
+    def set_base(self, number: int, branch: str) -> None:
+        """:param number: The pull request to retarget.
+        :param branch: The branch it is to merge into."""
+
+
+@dataclass(frozen=True)
+class StackReader(ABC):
+    """
+    Reading a repository's native stacks of pull requests.
+    """
+
+    @abstractmethod
+    def stacks(self) -> list[Stack]:
+        """:return: Every stack in the repository, newest first."""
+
+    @abstractmethod
+    def stack(self, number: int) -> Stack:
+        """:param number: The stack's number.
+        :return: That stack."""
+
+    @abstractmethod
+    def stack_of(self, pull_request: int) -> Stack | None:
+        """:param pull_request: A pull request's number.
+        :return: The stack holding it, ``None`` when it is in none."""
+
+
+@dataclass(frozen=True)
+class StackWriter(ABC):
+    """
+    Forming, growing and dissolving native stacks of pull requests.
+    """
+
+    @abstractmethod
+    def create_stack(self, pull_requests: Sequence[int]) -> Stack:
+        """
+        :param pull_requests: At least two pull requests, bottom first, each targeting
+            the branch of the one before it.
+        :return: The new stack.
+        """
+
+    @abstractmethod
+    def add_to_stack(self, stack: Stack, pull_requests: Sequence[int]) -> Stack:
+        """
+        :param stack: The stack to grow.
+        :param pull_requests: The pull requests to put on top, lowest first, the first
+            targeting the stack's top branch.
+        :return: The grown stack.
+        """
+
+    @abstractmethod
+    def unstack(self, stack: Stack) -> Stack | None:
+        """
+        :param stack: The stack to take the pull requests out of.
+        :return: What remains of it, ``None`` when it dissolved.
+        """
+
+
 class CommitChecks(ABC):
     """
     Reading the verdict over the checks reported on one commit.
@@ -169,6 +234,11 @@ class RepositoryPath(PathEnumeration):
     The repository's commits.
     """
 
+    STACKS = Path("/stacks")
+    """
+    The repository's native stacks of pull requests.
+    """
+
 
 class CommitReport(StrEnum):
     """
@@ -183,6 +253,22 @@ class CommitReport(StrEnum):
     STATUS = "status"
     """
     The commit statuses posted against it.
+    """
+
+
+class StackAction(StrEnum):
+    """
+    What is done to a stack, below its own path.
+    """
+
+    ADD = "add"
+    """
+    Put pull requests on top.
+    """
+
+    UNSTACK = "unstack"
+    """
+    Take the pull requests out again.
     """
 
 
@@ -204,6 +290,11 @@ class ListingParameter(StrEnum):
     PAGE = "page"
     """
     Which page to read, counting from one.
+    """
+
+    PULL_REQUEST = "pull_request"
+    """
+    Which pull request a listed stack must hold.
     """
 
 
@@ -261,10 +352,16 @@ class PullRequestListState(PullRequestListingSpecification, Enum):
 
 @dataclass(frozen=True)
 class GitHubRepository(
-    ForkPullRequests, CommitChecks, RepositoryLabels, CredentialHolder
+    ForkPullRequests,
+    PullRequestBaseWriter,
+    StackReader,
+    StackWriter,
+    CommitChecks,
+    RepositoryLabels,
+    CredentialHolder,
 ):
     """
-    Every pull-request and label call this tooling makes, against one repository.
+    Every pull-request, stack and label call this tooling makes, against one repository.
 
     ``gh`` is absent from the environment this normally runs in, so the calls are plain
     authenticated requests rather than a CLI wrapper.
@@ -282,7 +379,12 @@ class GitHubRepository(
 
     page_size: int = 100
     """
-    How many pull requests or labels to ask for per request.
+    How many pull requests, stacks or labels to ask for per request.
+    """
+
+    api_root: str = GitHubAddress.API
+    """
+    Where the REST API answers.
     """
 
     @classmethod
@@ -447,6 +549,51 @@ class GitHubRepository(
         """
         self._call("PATCH", f"{RepositoryPath.PULL_REQUESTS}/{number}", {"body": body})
 
+    def set_base(self, number: int, branch: str) -> None:
+        self._call(
+            "PATCH",
+            f"{RepositoryPath.PULL_REQUESTS}/{number}",
+            {RestJSONKey.BASE: branch},
+        )
+
+    def stacks(self) -> list[Stack]:
+        return [
+            Stack.from_json(entry)
+            for entry in self._every_page(RepositoryPath.STACKS, {})
+        ]
+
+    def stack(self, number: int) -> Stack:
+        return Stack.from_json(self._call("GET", f"{RepositoryPath.STACKS}/{number}"))
+
+    def stack_of(self, pull_request: int) -> Stack | None:
+        query = urllib.parse.urlencode({ListingParameter.PULL_REQUEST: pull_request})
+        found = self._call("GET", f"{RepositoryPath.STACKS}?{query}")
+        return Stack.from_json(found[0]) if found else None
+
+    def create_stack(self, pull_requests: Sequence[int]) -> Stack:
+        return Stack.from_json(
+            self._call(
+                "POST",
+                str(RepositoryPath.STACKS),
+                {RestJSONKey.PULL_REQUESTS: list(pull_requests)},
+            )
+        )
+
+    def add_to_stack(self, stack: Stack, pull_requests: Sequence[int]) -> Stack:
+        return Stack.from_json(
+            self._call(
+                "POST",
+                f"{RepositoryPath.STACKS}/{stack.number}/{StackAction.ADD}",
+                {RestJSONKey.PULL_REQUESTS: list(pull_requests)},
+            )
+        )
+
+    def unstack(self, stack: Stack) -> Stack | None:
+        remaining = self._call(
+            "POST", f"{RepositoryPath.STACKS}/{stack.number}/{StackAction.UNSTACK}"
+        )
+        return None if remaining is None else Stack.from_json(remaining)
+
     def _call(
         self, method: str, path: str, payload: Mapping[str, Any] | None = None
     ) -> Any:
@@ -470,11 +617,11 @@ class GitHubRepository(
         :param method: The HTTP method.
         :param path: The path below the API root, starting with a slash.
         :param payload: The JSON body, absent for a read.
-        :return: The decoded response.
+        :return: The decoded response, ``None`` when it has no body.
         :raises GitHubRequestFailed: If the API answers with an error status.
         """
         request = urllib.request.Request(
-            f"{GitHubAddress.API}{path}",
+            f"{self.api_root}{path}",
             method=method,
             data=None if payload is None else json.dumps(payload).encode(),
             headers={
@@ -485,7 +632,8 @@ class GitHubRepository(
         )
         try:
             with urllib.request.urlopen(request) as response:
-                return json.loads(response.read())
+                body = response.read()
+                return json.loads(body) if body else None
         except urllib.error.HTTPError as refused:
             raise GitHubRequestFailed(
                 status=refused.code,

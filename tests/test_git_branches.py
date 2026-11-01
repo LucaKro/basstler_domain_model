@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
     RemoteBranch,
@@ -145,3 +146,78 @@ def test_a_stack_is_replayed_onto_its_moved_base_branch_by_branch(
     assert result.succeeded
     assert checkout.contains("base-moved", "lower")
     assert checkout.contains("lower", "upper")
+
+
+# %% working on branches
+
+
+def test_a_created_branch_is_checked_out_at_its_start(checkout: GitCommandRunner):
+    start = checkout.commit_at("HEAD")
+
+    checkout.create_branch("feature", "main")
+
+    assert checkout.checked_out_branch() == "feature"
+    assert checkout.commit_at("HEAD") == start
+
+
+def test_creating_a_branch_that_exists_is_refused(checkout: GitCommandRunner):
+    with pytest.raises(GitCommandFailed):
+        checkout.create_branch("main", "main")
+
+
+def test_switching_checks_the_branch_out(checkout: GitCommandRunner):
+    commit_on(checkout, "feature", "main", "feature.txt")
+
+    checkout.switch_to("main")
+
+    assert checkout.checked_out_branch() == "main"
+
+
+def test_a_commit_holds_the_named_paths_only(checkout: GitCommandRunner):
+    (checkout.working_directory / "kept.txt").write_text("kept\n")
+    (checkout.working_directory / "left.txt").write_text("left\n")
+
+    commit = checkout.commit("Keep one", [Path("kept.txt")])
+
+    assert checkout.run("show", "--name-only", "--format=", commit) == "kept.txt"
+    assert checkout.run("status", "--porcelain") == "?? left.txt"
+
+
+def test_a_branch_behind_fast_forwards(checkout: GitCommandRunner):
+    commit_on(checkout, "ahead", "main", "ahead.txt")
+    checkout.switch_to("main")
+
+    assert checkout.fast_forward("ahead").succeeded
+    assert checkout.commit_at("main") == checkout.commit_at("ahead")
+
+
+def test_a_diverged_branch_does_not_fast_forward(checkout: GitCommandRunner):
+    commit_on(checkout, "other", "main", "other.txt")
+    commit_on(checkout, "mine", "main", "mine.txt")
+
+    assert not checkout.fast_forward("other").succeeded
+    assert checkout.contains("mine", "HEAD")
+
+
+def test_a_kept_reset_keeps_uncommitted_changes(checkout: GitCommandRunner):
+    commit_on(checkout, "rewritten", "main", "rewritten.txt")
+    commit_on(checkout, "mine", "main", "mine.txt")
+    (checkout.working_directory / "README.md").write_text("edited\n")
+
+    checkout.reset_kept("rewritten")
+
+    assert checkout.commit_at("HEAD") == checkout.commit_at("rewritten")
+    assert (checkout.working_directory / "README.md").read_text() == "edited\n"
+
+
+@pytest.mark.parametrize("already_staged", [False, True])
+def test_a_commit_of_a_removed_path_removes_it(
+    checkout: GitCommandRunner, already_staged: bool
+):
+    (checkout.working_directory / "README.md").unlink()
+    if already_staged:
+        checkout.run("rm", "--quiet", "--cached", "README.md")
+
+    commit = checkout.commit("Remove the readme", [Path("README.md")])
+
+    assert checkout.run("ls-tree", "--name-only", commit) == ""

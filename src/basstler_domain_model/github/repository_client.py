@@ -166,6 +166,34 @@ class StackWriter(ABC):
         """
 
 
+@dataclass(frozen=True)
+class PullRequestOpener(ABC):
+    """
+    Opening a pull request.
+    """
+
+    @abstractmethod
+    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+        """
+        :param head: The branch to merge, in this repository.
+        :param base: The branch to merge it into.
+        :param title: The pull request's title.
+        :param body: Its description.
+        :return: The number of the new draft pull request.
+        """
+
+
+@dataclass(frozen=True)
+class RepositoryDetails(ABC):
+    """
+    Reading facts about the repository itself.
+    """
+
+    @abstractmethod
+    def default_branch(self) -> str:
+        """:return: The branch pull requests target unless told otherwise."""
+
+
 class CommitChecks(ABC):
     """
     Reading the verdict over the checks reported on one commit.
@@ -244,6 +272,8 @@ class PullRequestListState(PullRequestListingSpecification, Enum):
 class GitHubRepository(
     ForkPullRequests,
     PullRequestBaseWriter,
+    PullRequestOpener,
+    RepositoryDetails,
     StackReader,
     StackWriter,
     CommitChecks,
@@ -369,6 +399,23 @@ class GitHubRepository(
         self.api.request(
             "PATCH", self.route.pull_request(number), {RestJSONKey.BODY: body}
         )
+
+    def open_draft(self, head: str, base: str, title: str, body: str) -> int:
+        created = self.api.request(
+            "POST",
+            self.route.pull_requests,
+            {
+                RestJSONKey.HEAD: head,
+                RestJSONKey.BASE: base,
+                RestJSONKey.TITLE: title,
+                RestJSONKey.BODY: body,
+                RestJSONKey.DRAFT: True,
+            },
+        )
+        return int(created[RestJSONKey.NUMBER])
+
+    def default_branch(self) -> str:
+        return str(self.api.get(self.route.root)[RestJSONKey.DEFAULT_BRANCH])
 
     def set_base(self, number: int, branch: str) -> None:
         self.api.request(

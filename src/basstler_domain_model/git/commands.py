@@ -9,7 +9,7 @@ place rather than at each call site.
 from __future__ import annotations
 
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -327,6 +327,64 @@ class GitCommandRunner:
         :param start_point: What to point it at.
         """
         self.run("checkout", "--quiet", "-B", branch, start_point)
+
+    def create_branch(self, name: str, start_point: str) -> None:
+        """
+        Create a branch and check it out.
+
+        :param name: The new branch.
+        :param start_point: What it starts at.
+        :raises GitCommandFailed: If the branch exists already.
+        """
+        self.run("switch", "--quiet", "--create", name, start_point)
+
+    def switch_to(self, branch: str) -> None:
+        """
+        Check out an existing branch, creating a local one that tracks the remote's when
+        only a remote has it.
+
+        :param branch: The branch to check out.
+        :raises GitCommandFailed: If no branch of that name exists, or uncommitted changes
+            would be overwritten.
+        """
+        self.run("switch", "--quiet", branch)
+
+    def commit(self, message: str, paths: Sequence[Path]) -> str:
+        """
+        Commit the current content of some paths.
+
+        :param message: The commit message.
+        :param paths: The files to commit, as they are in the working tree; one no
+            longer there is committed as removed.
+        :return: The new commit.
+        :raises GitCommandFailed: If nothing changed.
+        """
+        present = [
+            str(path) for path in paths if (self.working_directory / path).exists()
+        ]
+        removed = [str(path) for path in paths if str(path) not in present]
+        if present:
+            self.run("add", "--", *present)
+        if removed:
+            self.run("rm", "--quiet", "--cached", "--ignore-unmatch", "--", *removed)
+        self.run("commit", "--quiet", "--message", message)
+        return self.commit_at("HEAD")
+
+    def fast_forward(self, reference: str) -> GitCommandResult:
+        """
+        :param reference: What to move the checked-out branch to.
+        :return: The finished merge, failed when the branch has commits *reference* lacks.
+        """
+        return self.attempt("merge", "--quiet", "--ff-only", reference)
+
+    def reset_kept(self, reference: str) -> None:
+        """
+        Move the checked-out branch to another commit, keeping uncommitted changes.
+
+        :param reference: The commit to move it to.
+        :raises GitCommandFailed: If an uncommitted change would be lost.
+        """
+        self.run("reset", "--quiet", "--keep", reference)
 
     def checked_out_branch(self) -> str:
         """:return: The branch whose content a push would move."""

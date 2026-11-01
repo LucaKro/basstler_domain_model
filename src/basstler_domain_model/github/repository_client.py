@@ -26,7 +26,7 @@ from basstler_domain_model.github.exceptions import (
     GitHubCredentialUnavailableError,
     GitHubRequestFailed,
 )
-from basstler_domain_model.github.labels import Label
+from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.pull_request_fields import PullRequestPayload
 from basstler_domain_model.github.pull_request_models import CheckStatus
 from basstler_domain_model.github.rest_models import (
@@ -112,7 +112,7 @@ class RepositoryLabels(ABC):
         """:return: The name of every label the repository carries."""
 
     @abstractmethod
-    def create_label(self, label: Label) -> None:
+    def create_label(self, label: GitHubLabel) -> None:
         """:param label: The label to add, created with its description."""
 
 
@@ -331,7 +331,7 @@ class GitHubRepository(
             for label in self._every_page(RepositoryPath.LABELS, {})
         }
 
-    def create_label(self, label: Label) -> None:
+    def create_label(self, label: GitHubLabel) -> None:
         self._call(
             "POST",
             str(RepositoryPath.LABELS),

@@ -12,7 +12,7 @@ from basstler_domain_model.github.exceptions import ContradictoryLabelWriteError
 # %% labels
 
 
-class Label(str):
+class GitHubLabel(str):
     """
     A label as GitHub stores it: the label is its own name, and carries what it means.
 

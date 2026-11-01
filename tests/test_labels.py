@@ -1,18 +1,18 @@
 """
-Tests for :class:`basstler_domain_model.github.labels.Label`: a caller's own set of
-labels extends it.
+Tests for :class:`basstler_domain_model.github.labels.GitHubLabel`: a caller's own set
+of labels extends it.
 """
 
 from __future__ import annotations
 
 from enum import ReprEnum
 
-from basstler_domain_model.github.labels import Label
+from basstler_domain_model.github.labels import GitHubLabel
 
 # %% an enumeration of labels
 
 
-class EnumeratedLabel(Label, ReprEnum):
+class EnumeratedLabel(GitHubLabel, ReprEnum):
     """
     A caller's labels, enumerated, each its own name and carrying its description.
     """
@@ -39,4 +39,4 @@ def test_an_enumerated_label_is_its_own_name():
 
 
 def test_an_enumerated_label_is_a_label():
-    assert isinstance(EnumeratedLabel.READY, Label)
+    assert isinstance(EnumeratedLabel.READY, GitHubLabel)

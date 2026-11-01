@@ -1,0 +1,217 @@
+"""
+Every error reading or writing GitHub ends in, whichever way it is reached.
+"""
+
+from __future__ import annotations
+
+from abc import ABC
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from basstler_domain_model.exceptions import DataclassException, ExternalCallFailed
+from basstler_domain_model.repository import Repository
+
+if TYPE_CHECKING:
+    from basstler_domain_model.github.pull_request_fields import PullRequestField
+
+# %% reading one pull request's review state
+
+
+class PullRequestReadError(DataclassException, ABC):
+    """
+    Base class for every failure reading a pull request's checks and review state.
+    """
+
+
+@dataclass
+class GitHubCommandFailed(PullRequestReadError):
+    """
+    Raised when the ``gh`` invocation itself exits non-zero.
+    """
+
+    executable: str
+    """
+    The command that was run.
+    """
+
+    exit_code: int
+    """
+    The status it exited with.
+    """
+
+    error_output: str
+    """
+    Whatever it wrote to standard error.
+    """
+
+    def error_message(self) -> str:
+        return f"{self.executable} exited {self.exit_code}: {self.error_output}"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Check that gh is installed and logged in with read access to the "
+            "upstream: gh auth status"
+        )
+
+
+@dataclass
+class GraphQLErrorsReturned(PullRequestReadError):
+    """
+    Raised when GitHub answers with an ``errors`` array instead of data.
+    """
+
+    messages: list[str]
+    """
+    Every message GitHub reported.
+    """
+
+    def error_message(self) -> str:
+        return "GitHub answered with errors: " + "; ".join(self.messages)
+
+    def suggest_correction(self) -> str:
+        return (
+            "Check that the upstream repository and pull request exist and that the "
+            "logged-in account can read them"
+        )
+
+
+@dataclass
+class UpstreamPullRequestNotFound(PullRequestReadError):
+    """
+    Raised when a branch has no pull request open on the upstream.
+    """
+
+    branch: str
+    """
+    The fork branch that was looked up.
+    """
+
+    upstream: Repository
+    """
+    The repository that was searched.
+    """
+
+    fork_owner: str
+    """
+    The owner whose head branches were being claimed.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"no pull request on {self.upstream} has head "
+            f"'{self.fork_owner}:{self.branch}'"
+        )
+
+    def suggest_correction(self) -> str:
+        return (
+            "The branch has most likely not been promoted upstream yet; read it once "
+            "its upstream pull request is open"
+        )
+
+
+# %% calling the REST API with a token
+
+
+@dataclass
+class GitHubCredentialUnavailableError(DataclassException, RuntimeError):
+    """
+    Raised when no token is available to authenticate the API calls with.
+    """
+
+    variables: tuple[str, ...]
+    """
+    The environment variables that were consulted.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"no GitHub token: set one of {', '.join(self.variables)}, or run this "
+            f"with a caller that has one"
+        )
+
+    def suggest_correction(self) -> str:
+        return ""
+
+
+@dataclass
+class GitHubRequestFailed(ExternalCallFailed):
+    """
+    Raised when the API refuses a call the caller depends on.
+    """
+
+    method: str = ""
+    """
+    The HTTP method used.
+    """
+
+    path: str = ""
+    """
+    The API path called, without the host.
+    """
+
+    @property
+    def call(self) -> str:
+        """:return: The request line, as issued."""
+        return f"{self.method} {self.path}"
+
+
+# %% reading a fetched pull request
+
+
+@dataclass
+class MissingPullRequestFieldError(DataclassException, ValueError):
+    """
+    Raised when a fetched pull request omits a field the caller reads it by.
+
+    A fetch that drops a field is not partially correct: absent and legitimately empty
+    are different facts, and defaulting one to the other is what makes bad data
+    indistinguishable from good.
+    """
+
+    field_name: PullRequestField
+    """
+    The field that was absent.
+    """
+
+    pull_request_number: int | None
+    """
+    The pull request it was absent from, or ``None`` when the number itself is.
+    """
+
+    def error_message(self) -> str:
+        subject = (
+            f"pull request {self.pull_request_number}"
+            if self.pull_request_number is not None
+            else "a fetched pull request"
+        )
+        return (
+            f"{subject} has no '{self.field_name}'; the board cannot be derived from a "
+            f"fetch that omits it"
+        )
+
+    def suggest_correction(self) -> str:
+        return ""
+
+
+# %% writing labels
+
+
+@dataclass
+class ContradictoryLabelWriteError(DataclassException, ValueError):
+    """
+    Raised when one write is asked both to carry a label and to drop it.
+    """
+
+    labels: tuple[str, ...]
+    """
+    The labels asked for in both directions.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"cannot both add and remove {', '.join(self.labels)}: "
+            f"either outcome would be a guess at what was meant"
+        )
+
+    def suggest_correction(self) -> str:
+        return "Ask for each label to be either added or removed, not both."

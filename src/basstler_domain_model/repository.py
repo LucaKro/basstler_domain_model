@@ -159,6 +159,11 @@ class Repository:
         """
         return f"{self.url}/issues/{number}"
 
+    @property
+    def settings_url(self) -> str:
+        """:return: The repository's settings page on GitHub."""
+        return f"{self.url}/settings"
+
     def workflow_run_url(self, run: int) -> str:
         """
         :param run: The Actions workflow run's own number.

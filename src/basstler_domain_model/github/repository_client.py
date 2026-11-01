@@ -194,6 +194,27 @@ class RepositoryDetails(ABC):
         """:return: The branch pull requests target unless told otherwise."""
 
 
+@dataclass(frozen=True)
+class RepositorySettings(ABC):
+    """
+    Whether GitHub deletes merged branches, and turning that on, which not every
+    credential may.
+    """
+
+    @abstractmethod
+    def deletes_merged_branches(self) -> bool:
+        """:return: Whether GitHub deletes a pull request's branch once it is merged."""
+
+    @abstractmethod
+    def turn_on_merged_branch_deletion(self) -> bool:
+        """
+        Have GitHub delete a pull request's branch once it is merged.
+
+        :return: Whether GitHub accepted the change; a credential that may not change
+            settings is refused.
+        """
+
+
 class CommitChecks(ABC):
     """
     Reading the verdict over the checks reported on one commit.
@@ -274,6 +295,7 @@ class GitHubRepository(
     PullRequestBaseWriter,
     PullRequestOpener,
     RepositoryDetails,
+    RepositorySettings,
     StackReader,
     StackWriter,
     CommitChecks,
@@ -416,6 +438,14 @@ class GitHubRepository(
 
     def default_branch(self) -> str:
         return str(self.api.get(self.route.root)[RestJSONKey.DEFAULT_BRANCH])
+
+    def deletes_merged_branches(self) -> bool:
+        return bool(self.api.get(self.route.root)[RestJSONKey.DELETE_BRANCH_ON_MERGE])
+
+    def turn_on_merged_branch_deletion(self) -> bool:
+        return self.api.attempt(
+            "PATCH", self.route.root, {RestJSONKey.DELETE_BRANCH_ON_MERGE: True}
+        ).succeeded
 
     def set_base(self, number: int, branch: str) -> None:
         self.api.request(

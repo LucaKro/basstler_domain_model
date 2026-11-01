@@ -24,6 +24,12 @@ class GitHubLabel(str):
     What the label means, which it is created with.
     """
 
+    color: str | None = None
+    """
+    The colour it is created with, as six hexadecimal digits; ``None`` lets GitHub
+    choose.
+    """
+
 
 # %% label writes
 

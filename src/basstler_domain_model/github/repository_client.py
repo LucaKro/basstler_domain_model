@@ -15,6 +15,7 @@ from typing import Any
 
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.commit_checks import CommitCheckReader
+from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.pull_request_fields import PullRequestPayload
 from basstler_domain_model.github.routes import (
@@ -24,6 +25,8 @@ from basstler_domain_model.github.routes import (
 )
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (
+    IssueState,
+    IssueStateReason,
     PullRequestState,
     RestJSONKey,
     RollupState,
@@ -242,6 +245,63 @@ class RepositorySettings(ABC):
         """
 
 
+@dataclass(frozen=True)
+class IssueBoard(ABC):
+    """
+    Filing, listing, labelling and closing a repository's issues.
+    """
+
+    @abstractmethod
+    def open_issue(self, title: str, body: str, labels: Sequence[str]) -> int:
+        """
+        :param title: The issue's title.
+        :param body: Its description.
+        :param labels: The labels it is filed with.
+        :return: The new issue's number.
+        """
+
+    @abstractmethod
+    def issues(self, labels: Sequence[str], state: IssueState) -> list[Issue]:
+        """
+        :param labels: Labels every listed issue carries.
+        :param state: Whether to list open or closed issues.
+        :return: The issues, pull requests left out.
+        """
+
+    @abstractmethod
+    def replace_labels(self, number: int, labels: Sequence[str]) -> None:
+        """
+        :param number: The issue or pull request to write.
+        :param labels: The complete label set it must end up with.
+        """
+
+    @abstractmethod
+    def add_comment(self, number: int, body: str) -> str:
+        """
+        :param number: The issue or pull request to comment on.
+        :param body: The comment.
+        :return: The comment's URL.
+        """
+
+    @abstractmethod
+    def close_issue(self, number: int, reason: IssueStateReason) -> None:
+        """
+        :param number: The issue to close.
+        :param reason: Why it is closed.
+        """
+
+
+@dataclass(frozen=True)
+class ReviewRequests(ABC):
+    """
+    The pull requests waiting on the credential's account.
+    """
+
+    @abstractmethod
+    def awaiting_my_review(self) -> int:
+        """:return: How many open pull requests ask the account for a review."""
+
+
 class CommitChecks(ABC):
     """
     Reading the verdict over the checks reported on one commit.
@@ -323,6 +383,8 @@ class GitHubRepository(
     PullRequestOpener,
     RepositoryDetails,
     RepositorySettings,
+    IssueBoard,
+    ReviewRequests,
     StackReader,
     StackWriter,
     CommitChecks,
@@ -391,11 +453,10 @@ class GitHubRepository(
         }
 
     def create_label(self, label: GitHubLabel) -> None:
-        self.api.request(
-            "POST",
-            self.route.labels,
-            {RestJSONKey.NAME: label, RestJSONKey.DESCRIPTION: label.description},
-        )
+        payload = {RestJSONKey.NAME: label, RestJSONKey.DESCRIPTION: label.description}
+        if label.color is not None:
+            payload[RestJSONKey.COLOR] = label.color
+        self.api.request("POST", self.route.labels, payload)
 
     def check_state(self, commit: str) -> RollupState:
         checks = CommitCheckReader(self.api, self.route).checks(commit)
@@ -492,6 +553,40 @@ class GitHubRepository(
         return self.api.attempt(
             "PUT", self.route.actions_permissions, {RestJSONKey.ENABLED: True}
         ).succeeded
+
+    def open_issue(self, title: str, body: str, labels: Sequence[str]) -> int:
+        created = self.api.request(
+            "POST",
+            self.route.issues(),
+            {
+                RestJSONKey.TITLE: title,
+                RestJSONKey.BODY: body,
+                RestJSONKey.LABELS: list(labels),
+            },
+        )
+        return int(created[RestJSONKey.NUMBER])
+
+    def issues(self, labels: Sequence[str], state: IssueState) -> list[Issue]:
+        listing = self.route.listing(
+            self.route.issues(),
+            {QueryParameter.LABELS: ",".join(labels), QueryParameter.STATE: state},
+        )
+        return [
+            Issue.from_json(entry)
+            for entry in self._every_entry(listing)
+            if not Issue.is_pull_request(entry)
+        ]
+
+    def close_issue(self, number: int, reason: IssueStateReason) -> None:
+        self.api.request(
+            "PATCH",
+            self.route.issue(number),
+            {RestJSONKey.STATE: IssueState.CLOSED, RestJSONKey.STATE_REASON: reason},
+        )
+
+    def awaiting_my_review(self) -> int:
+        found = self.api.get(self.route.review_requests())
+        return int(found[RestJSONKey.TOTAL_COUNT])
 
     def set_base(self, number: int, branch: str) -> None:
         self.api.request(

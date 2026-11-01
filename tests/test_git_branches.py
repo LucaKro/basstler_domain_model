@@ -1,0 +1,101 @@
+"""
+Tests for the git side of working with branches: the remotes, committing files without a
+checkout, and replaying a stack of branches onto a moved base.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from basstler_domain_model.git.commands import GitCommandRunner
+
+# %% fixtures
+
+
+@pytest.fixture
+def checkout(tmp_path: Path) -> GitCommandRunner:
+    """:return: A checkout with one commit on ``main``, and an identity to commit as."""
+    git = GitCommandRunner(tmp_path / "checkout")
+    git.working_directory.mkdir()
+    git.run("init", "--quiet", "--initial-branch=main")
+    git.run("config", "user.name", "Test Author")
+    git.run("config", "user.email", "test.author@example.com")
+    (git.working_directory / "README.md").write_text("start\n")
+    git.run("add", "README.md")
+    git.run("commit", "--quiet", "--message", "Start")
+    return git
+
+
+def commit_on(git: GitCommandRunner, branch: str, start: str, name: str) -> None:
+    """
+    :param git: The checkout.
+    :param branch: The branch to create and commit on.
+    :param start: Where it starts.
+    :param name: The file the commit adds, and its message.
+    """
+    git.run("switch", "--quiet", "--create", branch, start)
+    (git.working_directory / name).write_text(f"{name}\n")
+    git.run("add", name)
+    git.run("commit", "--quiet", "--message", name)
+
+
+# %% remotes
+
+
+def test_a_remote_names_the_repository_it_pushes_to(checkout: GitCommandRunner):
+    checkout.run(
+        "remote", "add", "origin", "https://github.com/an-owner/a-repository.git"
+    )
+
+    [remote] = checkout.remotes()
+
+    assert remote.repository is not None
+    assert remote.repository.full_name == "an-owner/a-repository"
+
+
+def test_a_remote_that_names_no_repository_has_none(checkout: GitCommandRunner):
+    checkout.run("remote", "add", "local", "/a/plain/path")
+
+    assert checkout.remotes()[0].repository is None
+
+
+# %% committing without a checkout
+
+
+def test_a_commit_of_files_leaves_the_checkout_untouched(checkout: GitCommandRunner):
+    before = checkout.run("status", "--porcelain")
+
+    commit = checkout.commit_files(None, {Path("notes.md"): "a note\n"}, "Save")
+
+    assert checkout.run("show", f"{commit}:notes.md") == "a note"
+    assert checkout.run("status", "--porcelain") == before
+
+
+def test_a_commit_on_a_parent_keeps_the_parent_s_files(checkout: GitCommandRunner):
+    parent = checkout.commit_files(None, {Path("notes.md"): "a note\n"}, "Save")
+
+    commit = checkout.commit_files(
+        parent, {Path("progress/a.md"): "progress\n"}, "Save"
+    )
+
+    assert checkout.run("show", f"{commit}:notes.md") == "a note"
+    assert checkout.run("rev-parse", f"{commit}^") == parent
+
+
+# %% restacking
+
+
+def test_a_stack_is_replayed_onto_its_moved_base_branch_by_branch(
+    checkout: GitCommandRunner,
+):
+    commit_on(checkout, "lower", "main", "lower.txt")
+    commit_on(checkout, "upper", "lower", "upper.txt")
+    commit_on(checkout, "base-moved", "main", "base.txt")
+
+    result = checkout.rebase_stack("base-moved", "upper")
+
+    assert result.succeeded
+    assert checkout.contains("base-moved", "lower")
+    assert checkout.contains("lower", "upper")

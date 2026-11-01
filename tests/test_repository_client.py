@@ -115,3 +115,59 @@ def test_a_refused_settings_change_is_reported_rather_than_raised():
 
     with ReplayedApi(answers) as api:
         assert client(api).turn_on_merged_branch_deletion() is False
+
+
+# %% issues and Actions
+
+
+def test_whether_issues_are_on_is_read_from_the_repository():
+    answers = {
+        ("GET", f"/{ROUTE.root}"): answer(
+            HTTPStatus.OK, {RestJSONKey.HAS_ISSUES: False}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        assert client(api).issues_enabled() is False
+
+
+def test_turning_on_issues_asks_github_for_them():
+    answers = {("PATCH", f"/{ROUTE.root}"): answer(HTTPStatus.OK, {})}
+
+    with ReplayedApi(answers) as api:
+        accepted = client(api).turn_on_issues()
+
+    assert accepted is True
+    assert api.sent[0].payload == {RestJSONKey.HAS_ISSUES: True}
+
+
+def test_whether_actions_may_run_is_read_from_their_permissions():
+    answers = {
+        ("GET", f"/{ROUTE.actions_permissions}"): answer(
+            HTTPStatus.OK, {RestJSONKey.ENABLED: False}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        assert client(api).actions_enabled() is False
+
+
+def test_actions_a_credential_may_not_read_are_unknown():
+    answers = {
+        ("GET", f"/{ROUTE.actions_permissions}"): answer(
+            HTTPStatus.FORBIDDEN, {"message": "not permitted"}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        assert client(api).actions_enabled() is None
+
+
+def test_turning_on_actions_asks_github_for_them():
+    answers = {("PUT", f"/{ROUTE.actions_permissions}"): answer(HTTPStatus.OK, {})}
+
+    with ReplayedApi(answers) as api:
+        accepted = client(api).turn_on_actions()
+
+    assert accepted is True
+    assert api.sent[0].payload == {RestJSONKey.ENABLED: True}

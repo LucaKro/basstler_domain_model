@@ -1,12 +1,13 @@
 """
-A local HTTP server answering each request with a recorded response, and keeping what it
-was sent, standing in for GitHub's REST API.
+A local HTTP server standing in for GitHub's API in tests: it answers each request with
+a recorded answer, and keeps what it was sent.
 """
 
 from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,10 +28,24 @@ class RecordedAnswer:
     The status to answer with.
     """
 
-    body: Path | None = None
+    body: str = ""
     """
-    The recorded body to answer with, ``None`` for an empty one.
+    The body to answer with, empty for none.
     """
+
+    headers: Mapping[str, str] = field(default_factory=dict)
+    """
+    Headers to answer with besides the body's length, such as ``Location`` or ``Link``.
+    """
+
+    @classmethod
+    def from_file(cls, status: HTTPStatus, recording: Path) -> RecordedAnswer:
+        """
+        :param status: The status to answer with.
+        :param recording: A file holding the body to answer with.
+        :return: The answer.
+        """
+        return cls(status, recording.read_text())
 
 
 @dataclass(frozen=True)
@@ -54,6 +69,11 @@ class SentRequest:
     Its decoded JSON body, ``None`` when it had none.
     """
 
+    authorization: str | None
+    """
+    Its ``Authorization`` header, ``None`` when it carried none.
+    """
+
 
 # %% the server
 
@@ -61,12 +81,14 @@ class SentRequest:
 @dataclass
 class ReplayedApi:
     """
-    Answers each ``(method, path)`` with the answer recorded for it.
+    Answers each ``(method, path)`` with the answer recorded for it, and anything else
+    with a 404 naming what was asked.
     """
 
-    answers: dict[tuple[str, str], RecordedAnswer]
+    answers: dict[tuple[str, str], RecordedAnswer] = field(default_factory=dict)
     """
-    The answer to each method and path, query included.
+    The answer to each method and path, query included; filled before or while the
+    server runs.
     """
 
     sent: list[SentRequest] = field(default_factory=list)
@@ -91,17 +113,32 @@ class ReplayedApi:
                 raw = self.rfile.read(length) if length else b""
                 replayed.sent.append(
                     SentRequest(
-                        self.command, self.path, json.loads(raw) if raw else None
+                        self.command,
+                        self.path,
+                        json.loads(raw) if raw else None,
+                        self.headers.get("Authorization"),
                     )
                 )
-                recorded = replayed.answers[(self.command, self.path)]
-                body = recorded.body.read_bytes() if recorded.body else b""
+                recorded = replayed.answers.get(
+                    (self.command, self.path),
+                    RecordedAnswer(
+                        HTTPStatus.NOT_FOUND,
+                        json.dumps(
+                            {
+                                "message": f"no recorded answer for {self.command} {self.path}"
+                            }
+                        ),
+                    ),
+                )
+                body = recorded.body.encode()
                 self.send_response(recorded.status)
+                for name, value in recorded.headers.items():
+                    self.send_header(name, value)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
 
-            do_GET = do_POST = do_PATCH = answer
+            do_GET = do_POST = do_PATCH = do_PUT = do_DELETE = answer
 
             def log_message(self, *arguments: Any) -> None:
                 """Keep the test output free of request logs."""

@@ -8,13 +8,12 @@ place rather than at each call site.
 
 from __future__ import annotations
 
-import os
-import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.git.exceptions import (
     GitCommandFailed,
     UnresolvableReferenceError,
@@ -44,35 +43,29 @@ class IntegrationStrategy(StrEnum):
 
 
 @dataclass(frozen=True)
-class GitCommandResult:
+class GitCommandResult(CommandResult):
     """
     One finished git command, whether or not it succeeded.
     """
 
     arguments: tuple[str, ...]
     """
-    The git subcommand and its arguments, as invoked.
+    The git subcommand and its arguments, as invoked, without ``git`` itself.
     """
 
-    exit_status: int
-    """
-    The status git exited with.
-    """
-
-    output: str
-    """
-    Git's stripped stdout.
-    """
-
-    error_output: str
-    """
-    Git's stripped stderr.
-    """
-
-    @property
-    def succeeded(self) -> bool:
-        """:return: Whether git exited zero."""
-        return self.exit_status == 0
+    @classmethod
+    def of(cls, result: CommandResult) -> GitCommandResult:
+        """
+        :param result: A finished ``git`` command.
+        :return: It, its arguments without ``git`` itself.
+        """
+        return cls(
+            result.arguments[1:],
+            result.exit_status,
+            result.output,
+            result.error_output,
+            result.seconds,
+        )
 
     def raise_if_failed(self) -> GitCommandResult:
         """:return: This result, when the command succeeded.
@@ -137,18 +130,10 @@ class GitCommandRunner:
             own.
         :return: The finished command.
         """
-        completed = subprocess.run(
-            ["git", *arguments],
-            cwd=self.working_directory,
-            capture_output=True,
-            text=True,
-            env={**os.environ, **(environment or {})},
-        )
-        return GitCommandResult(
-            arguments=arguments,
-            exit_status=completed.returncode,
-            output=completed.stdout.strip(),
-            error_output=completed.stderr.strip(),
+        return GitCommandResult.of(
+            CommandRunner(self.working_directory).run(
+                "git", *arguments, environment=environment
+            )
         )
 
     def run(self, *arguments: str, environment: Mapping[str, str] | None = None) -> str:

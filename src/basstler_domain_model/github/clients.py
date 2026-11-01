@@ -1,36 +1,31 @@
 """
-The interfaces through which GitHub is read, and the client implementing them through
-``gh``.
+The interfaces through which GitHub is read, and the client implementing them over HTTP.
 """
 
 from __future__ import annotations
 
 import json
-import subprocess
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from pathlib import Path
 from typing import Any
 
-from basstler_domain_model.class_property import (
-    classproperty,
-)
-from basstler_domain_model.github.vocabulary import (
-    GitHubClient,
-)
-from basstler_domain_model.repository import (
-    Repository,
-)
-from basstler_domain_model.github.exceptions import (
-    GitHubCommandFailed,
-)
-from basstler_domain_model.github.pull_request_models import (
-    GraphQLResponse,
-)
-from basstler_domain_model.github.vocabulary import (
-    PullRequestJSONKey,
-)
+from basstler_domain_model.class_property import classproperty
+from basstler_domain_model.commands import CommandRunner
+from basstler_domain_model.environment import GitHubActionsVariable
+from basstler_domain_model.github.credential import GitHubToken
+from basstler_domain_model.github.exceptions import GitHubRequestFailed
+from basstler_domain_model.github.pull_request_models import GraphQLResponse
+from basstler_domain_model.github.vocabulary import PullRequestJSONKey
+from basstler_domain_model.repository import GitHubAddress, Repository
 
-# %% client
+# %% what reads GitHub
 
 
 class JobLogReader(ABC):
@@ -89,105 +84,248 @@ class RestClient(ABC):
         """
 
 
-@dataclass
-class GitHubCommandLineClient(GraphQLClient, RestClient, JobLogReader):
-    """
-    A client that shells out to ``gh api``.
+# %% one answer
 
-    A runner ships ``gh`` and authenticates it from ``GITHUB_TOKEN``, and a Claude Code
-    session's proxy authenticates it for the repositories the session has attached, so
-    this holds no credential handling of its own.
+
+@dataclass(frozen=True)
+class RestAnswer:
+    """
+    What the API answered one call with, a refusal included.
     """
 
-    executable: str = GitHubClient.COMMAND_LINE
+    status: int
     """
-    The command to invoke, overridable for testing.
+    The HTTP status.
+    """
+
+    text: str
+    """
+    The body, as it came.
+    """
+
+    headers: Mapping[str, str] = field(default_factory=dict)
+    """
+    The response headers, by lowercased name.
     """
 
     @classproperty
-    def allow_escape_sequences(cls) -> str:
+    def redirect_statuses(cls) -> frozenset[int]:
         """
-        What ``gh`` wants before it will print a log at all: a test runner colours its
-        own output, and ``gh`` refuses to write terminal escape sequences it was not
-        asked for.
+        The statuses that send a caller to another address.
         """
-        return "--allow-escape-sequences"
+        return frozenset(
+            {
+                HTTPStatus.MOVED_PERMANENTLY,
+                HTTPStatus.FOUND,
+                HTTPStatus.SEE_OTHER,
+                HTTPStatus.TEMPORARY_REDIRECT,
+                HTTPStatus.PERMANENT_REDIRECT,
+            }
+        )
+
+    @property
+    def succeeded(self) -> bool:
+        """:return: Whether the status is a 2xx one."""
+        return 200 <= self.status < 300
+
+    @property
+    def body(self) -> Any:
+        """:return: The body decoded as JSON, ``None`` when it is empty."""
+        return json.loads(self.text) if self.text else None
+
+    @property
+    def redirect(self) -> str | None:
+        """:return: The address the answer sends the caller to, ``None`` when it sends
+        it nowhere."""
+        if self.status not in self.redirect_statuses:
+            return None
+        return self.headers.get("location")
+
+    @property
+    def next_page(self) -> str | None:
+        """:return: The address of the next page of a paged listing, ``None`` on the
+        last page."""
+        found = re.search(r'<([^>]+)>;\s*rel="next"', self.headers.get("link", ""))
+        return found.group(1) if found else None
+
+
+# %% the client
+
+
+class NoAutomaticRedirect(urllib.request.HTTPRedirectHandler):
+    """
+    Hands every redirect back as an answer, so the client decides whether the token
+    travels with it.
+    """
+
+    def redirect_request(self, *arguments: Any) -> None:
+        """:return: Nothing, so the redirect is answered rather than followed."""
+        return None
+
+
+@dataclass(frozen=True)
+class GitHubApi(GraphQLClient, RestClient, JobLogReader):
+    """
+    GitHub's REST and GraphQL APIs, called over HTTP with a token.
+    """
+
+    token: str
+    """
+    The credential the calls authenticate with.
+    """
+
+    api_root: str = GitHubAddress.API
+    """
+    Where the API answers.
+    """
+
+    @classmethod
+    def from_environment(cls) -> GitHubApi:
+        """
+        :return: A client with the environment's token, or ``gh``'s, at the API root a
+            GitHub Actions runner names, or GitHub's own.
+        :raises GitHubCredentialUnavailableError: If no token is found.
+        """
+        return cls(
+            GitHubToken(CommandRunner(Path.cwd())).find(),
+            GitHubActionsVariable.API_URL.read() or GitHubAddress.API,
+        )
+
+    def attempt(
+        self, method: str, path: str, payload: Mapping[str, Any] | None = None
+    ) -> RestAnswer:
+        """
+        Make one call whose refusal is an expected outcome, following a redirect, with
+        the token only when it stays on the API's host.
+
+        :param method: The HTTP method.
+        :param path: The path below the API root, with or without a leading slash, or a
+            whole address the API handed out.
+        :param payload: The JSON body, absent for a read.
+        :return: What the API answered, a refusal included.
+        """
+        address = (
+            path
+            if path.startswith(self.api_root)
+            else f"{self.api_root}/{path.removeprefix('/')}"
+        )
+        answer = self._exchange(method, address, payload, authorized=True)
+        if answer.redirect is None:
+            return answer
+        same_host = (
+            urllib.parse.urlsplit(answer.redirect).netloc
+            == urllib.parse.urlsplit(self.api_root).netloc
+        )
+        return self._exchange("GET", answer.redirect, None, authorized=same_host)
+
+    def request(
+        self, method: str, path: str, payload: Mapping[str, Any] | None = None
+    ) -> Any:
+        """
+        Make one call the caller depends on.
+
+        :param method: The HTTP method.
+        :param path: The path below the API root.
+        :param payload: The JSON body, absent for a read.
+        :return: The decoded answer, ``None`` when it has no body.
+        :raises GitHubRequestFailed: If the API refuses the call.
+        """
+        return self._succeeded(method, path, self.attempt(method, path, payload)).body
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         """
-        Run one GraphQL query through ``gh``.
-
-        :param query: The GraphQL document.
-        :param variables: The document's variables.
-        :return: The response's ``data`` data.
-        :raises GitHubCommandFailed: If ``gh`` exits non-zero.
+        :raises GitHubRequestFailed: If the API refuses the call.
         :raises GraphQLErrorsReturned: If GitHub answers with errors.
         """
-        request = json.dumps(
-            {PullRequestJSONKey.QUERY: query, PullRequestJSONKey.VARIABLES: variables}
+        payload = {
+            PullRequestJSONKey.QUERY: query,
+            PullRequestJSONKey.VARIABLES: variables,
+        }
+        answer = self._succeeded(
+            "POST", "graphql", self.attempt("POST", "graphql", payload)
         )
-        return GraphQLResponse.from_json(
-            self._run(["api", "graphql", "--input", "-"], request)
-        ).result()
+        return GraphQLResponse.from_json(answer.text).result()
 
     def get(self, path: str) -> Any:
         """
-        Read one REST response through ``gh``.
-
-        :param path: The REST path, query included.
-        :return: The parsed response.
-        :raises GitHubCommandFailed: If ``gh`` exits non-zero.
+        :raises GitHubRequestFailed: If the API refuses the call.
         """
-        return json.loads(self._run(["api", path]))
+        return self.request("GET", path)
 
     def get_pages(self, path: str) -> list[Any]:
         """
-        Read every page of a REST response through ``gh``, which follows the pages and
-        collects them into one list.
-
-        :param path: The REST path of the first page, query included.
-        :return: Each page's parsed response, in order.
-        :raises GitHubCommandFailed: If ``gh`` exits non-zero.
+        :raises GitHubRequestFailed: If the API refuses a page.
         """
-        return json.loads(self._run(["api", "--paginate", "--slurp", path]))
+        pages = []
+        address: str | None = path
+        while address is not None:
+            answer = self._succeeded("GET", address, self.attempt("GET", address))
+            pages.append(answer.body)
+            address = answer.next_page
+        return pages
 
     def read_job_log(self, repository: Repository, job_identifier: int) -> str:
         """
-        Read one job's log through ``gh``.
-
-        The upstream is a different repository from the one the runner is running in,
-        which its token reads as anyone else does.
-
-        :param repository: The repository the job ran in.
-        :param job_identifier: The job to read.
-        :return: The log, exactly as the runner recorded it.
-        :raises GitHubCommandFailed: If ``gh`` exits non-zero.
+        :raises GitHubRequestFailed: If the API refuses the call.
         """
-        return self._run(
-            [
-                "api",
-                self.allow_escape_sequences,
-                repository.job_log_path(job_identifier),
-            ]
-        )
+        path = repository.job_log_path(job_identifier)
+        return self._succeeded("GET", path, self.attempt("GET", path)).text
 
-    def _run(self, arguments: list[str], standard_input: str | None = None) -> str:
+    @staticmethod
+    def _succeeded(method: str, path: str, answer: RestAnswer) -> RestAnswer:
         """
-        Invoke ``gh`` once and hand back what it wrote.
-
-        :param arguments: The arguments to pass.
-        :param standard_input: What to write to its standard input, if anything.
-        :return: Its standard output.
-        :raises GitHubCommandFailed: If it exits non-zero.
+        :param method: The HTTP method the answer is to.
+        :param path: The path it is to.
+        :param answer: The answer.
+        :return: It, when it succeeded.
+        :raises GitHubRequestFailed: When it did not.
         """
-        completed = subprocess.run(
-            [self.executable, *arguments],
-            input=standard_input,
-            capture_output=True,
-            text=True,
-        )
-        if completed.returncode != 0:
-            raise GitHubCommandFailed(
-                self.executable, completed.returncode, completed.stderr.strip()
+        if not answer.succeeded:
+            raise GitHubRequestFailed(
+                status=answer.status, detail=answer.text, method=method, path=path
             )
-        return completed.stdout
+        return answer
+
+    def _exchange(
+        self,
+        method: str,
+        address: str,
+        payload: Mapping[str, Any] | None,
+        authorized: bool,
+    ) -> RestAnswer:
+        """
+        :param method: The HTTP method.
+        :param address: The whole address to call.
+        :param payload: The JSON body, absent for a read.
+        :param authorized: Whether the token goes with the call.
+        :return: What came back, a refusal or a redirect included.
+        """
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+        }
+        if authorized:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = urllib.request.Request(
+            address,
+            method=method,
+            data=None if payload is None else json.dumps(payload).encode(),
+            headers=headers,
+        )
+        opener = urllib.request.build_opener(NoAutomaticRedirect())
+        try:
+            with opener.open(request) as response:
+                return RestAnswer(
+                    response.status,
+                    response.read().decode(errors="replace"),
+                    {name.lower(): value for name, value in response.headers.items()},
+                )
+        except urllib.error.HTTPError as refused:
+            return RestAnswer(
+                refused.code,
+                refused.read().decode(errors="replace"),
+                {
+                    name.lower(): value
+                    for name, value in (refused.headers or {}).items()
+                },
+            )

@@ -66,9 +66,9 @@ class ExternalCallFailed(DataclassException, RuntimeError, ABC):
     they name the call.
     """
 
-    status: int
+    status: int | None
     """
-    The status the call came back with.
+    The status the call came back with, ``None`` when it could not be made at all.
     """
 
     detail: str

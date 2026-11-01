@@ -72,3 +72,38 @@ class DatasetLocation(PathEnumeration):
     """
     The stack found by pull request, its bottom pull request merged.
     """
+
+    GRAPHQL_DATA = DIRECTORY / "api" / "graphql-data.json"
+    """
+    A GraphQL answer carrying data.
+    """
+
+    GRAPHQL_ERRORS = DIRECTORY / "api" / "graphql-errors.json"
+    """
+    A GraphQL answer carrying errors instead of data.
+    """
+
+    PAGE_ONE = DIRECTORY / "api" / "page-one.json"
+    """
+    The first page of a listing.
+    """
+
+    PAGE_TWO = DIRECTORY / "api" / "page-two.json"
+    """
+    The second and last page of the same listing.
+    """
+
+    JOB_LOG = DIRECTORY / "api" / "job-log.txt"
+    """
+    A job's log, as blob storage serves it.
+    """
+
+    REFUSAL = DIRECTORY / "api" / "refusal.json"
+    """
+    The body of a refused call.
+    """
+
+    GH_STUB = DIRECTORY / "stubs" / "gh.sh"
+    """
+    A ``gh`` that only answers ``gh auth token``, with ``STUB_TOKEN``.
+    """

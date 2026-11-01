@@ -421,6 +421,62 @@ class RestJSONKey(StrEnum):
     DESCRIPTION = "description"
     PULL_REQUESTS = "pull_requests"
     OPEN = "open"
+    DEFAULT_BRANCH = "default_branch"
+    HAS_ISSUES = "has_issues"
+    STATE_REASON = "state_reason"
+    REQUESTED_REVIEWERS = "requested_reviewers"
+    AHEAD_BY = "ahead_by"
+    BEHIND_BY = "behind_by"
+    TOTAL_COUNT = "total_count"
+    COLOR = "color"
+    DELETE_BRANCH_ON_MERGE = "delete_branch_on_merge"
+    ENABLED = "enabled"
+    ALLOWED_ACTIONS = "allowed_actions"
+    WORKFLOW_RUNS = "workflow_runs"
+    STATUS = "status"
+
+
+# %% issues and workflow runs
+
+
+class IssueState(StrEnum):
+    """
+    Whether an issue, or a pull request read as one, is open.
+    """
+
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class IssueStateReason(StrEnum):
+    """
+    Why an issue was closed or reopened.
+    """
+
+    COMPLETED = "completed"
+    """
+    Closed because it was done.
+    """
+
+    NOT_PLANNED = "not_planned"
+    """
+    Closed without being done, because it will not be.
+    """
+
+    REOPENED = "reopened"
+    """
+    Opened again after being closed.
+    """
+
+
+class WorkflowRunStatus(StrEnum):
+    """
+    Where an Actions workflow run stands.
+    """
+
+    QUEUED = "queued"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
 
 
 # %% pull request mergeability

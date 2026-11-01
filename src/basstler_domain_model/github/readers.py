@@ -8,22 +8,15 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
-from urllib.parse import urlencode
 
-from basstler_domain_model.class_property import (
-    classproperty,
-)
 from basstler_domain_model.environment import (
     ClaudeCodeVariable,
 )
 from basstler_domain_model.repository import (
     Repository,
 )
-from basstler_domain_model.github.clients import (
-    GitHubCommandLineClient,
-    GraphQLClient,
-    RestClient,
-)
+from basstler_domain_model.github.clients import GitHubApi, GraphQLClient, RestClient
+from basstler_domain_model.github.routes import RepositoryRoute
 from basstler_domain_model.github.exceptions import (
     UpstreamPullRequestNotFound,
 )
@@ -190,90 +183,6 @@ class UpstreamPullRequestReader(PullRequestSource):
         return UpstreamPullRequestSnapshot.assemble(pull_request, threads)
 
 
-@dataclass(frozen=True)
-class UpstreamRestRoute:
-    """
-    The REST paths reading one upstream repository's pull requests takes.
-    """
-
-    repository: Repository
-    """
-    The repository the paths are under.
-    """
-
-    @classproperty
-    def page_size(cls) -> int:
-        """
-        The most entries GitHub hands back per page, asked for so a long list takes as
-        few requests as it can.
-        """
-        return 100
-
-    def pull_requests_for_head(self, owner: str, branch: str) -> str:
-        """
-        :param owner: Whose branch to search for.
-        :param branch: The branch's name.
-        :return: The search for pull requests opened from it, in any state.
-        """
-        query = urlencode(
-            {"head": f"{owner}:{branch}", "state": "all", "per_page": self.page_size},
-            safe=":",
-        )
-        return f"{self.repository.api_path}/pulls?{query}"
-
-    def pull_request(self, number: int) -> str:
-        """
-        :param number: The pull request's number.
-        :return: The pull request itself.
-        """
-        return f"{self.repository.api_path}/pulls/{number}"
-
-    def reviews(self, number: int) -> str:
-        """
-        :param number: The pull request's number.
-        :return: Its submitted reviews.
-        """
-        return f"{self.pull_request(number)}/reviews?per_page={self.page_size}"
-
-    def review_comments(self, number: int) -> str:
-        """
-        :param number: The pull request's number.
-        :return: Every review comment on it, across all its threads.
-        """
-        return f"{self.pull_request(number)}/comments?per_page={self.page_size}"
-
-    def review_threads(self, number: int) -> str:
-        """
-        The threads with their resolved state - a route of the Claude Code session
-        proxy's own, standing in for the GraphQL GitHub keeps that state behind, which
-        answers with every thread at once.
-
-        :param number: The pull request's number.
-        :return: Its review threads.
-        """
-        return f"{self.pull_request(number)}/ccr/review_threads"
-
-    def check_runs(self, sha: str) -> str:
-        """
-        :param sha: The commit.
-        :return: The check runs reported against it.
-        """
-        return (
-            f"{self.repository.api_path}/commits/{sha}/check-runs"
-            f"?per_page={self.page_size}"
-        )
-
-    def commit_status(self, sha: str) -> str:
-        """
-        :param sha: The commit.
-        :return: The statuses posted against it.
-        """
-        return (
-            f"{self.repository.api_path}/commits/{sha}/status"
-            f"?per_page={self.page_size}"
-        )
-
-
 @dataclass
 class RestPullRequestReader(PullRequestSource):
     """
@@ -297,9 +206,9 @@ class RestPullRequestReader(PullRequestSource):
     """
 
     @property
-    def route(self) -> UpstreamRestRoute:
+    def route(self) -> RepositoryRoute:
         """:return: The paths under the upstream."""
-        return UpstreamRestRoute(self.upstream_repository)
+        return RepositoryRoute(self.upstream_repository)
 
     def resolve_pull_request_number(self, branch: str) -> int:
         """
@@ -414,7 +323,7 @@ class ReadSource(StrEnum):
 
     def reader(
         self,
-        client: GitHubCommandLineClient,
+        client: GitHubApi,
         upstream_repository: Repository,
         fork_owner: str,
     ) -> PullRequestSource:

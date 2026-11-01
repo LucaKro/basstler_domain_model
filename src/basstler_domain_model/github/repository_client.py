@@ -193,16 +193,17 @@ class RepositoryDetails(ABC):
     def default_branch(self) -> str:
         """:return: The branch pull requests target unless told otherwise."""
 
-    @abstractmethod
-    def deletes_merged_branches(self) -> bool:
-        """:return: Whether GitHub deletes a pull request's branch once it is merged."""
-
 
 @dataclass(frozen=True)
 class RepositorySettings(ABC):
     """
-    Changing the repository's settings, which not every credential may.
+    Whether GitHub deletes merged branches, and turning that on, which not every
+    credential may.
     """
+
+    @abstractmethod
+    def deletes_merged_branches(self) -> bool:
+        """:return: Whether GitHub deletes a pull request's branch once it is merged."""
 
     @abstractmethod
     def turn_on_merged_branch_deletion(self) -> bool:

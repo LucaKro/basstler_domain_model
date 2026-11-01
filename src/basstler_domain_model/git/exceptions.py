@@ -47,3 +47,26 @@ class UnresolvableReferenceError(DataclassException, LookupError):
             "fetch the branch it names from its remote, and check that the branch "
             "still exists there"
         )
+
+
+@dataclass
+class StorageBranchPushRefused(DataclassException, RuntimeError):
+    """
+    Raised when a storage branch refuses a push even after building on its newest tip.
+    """
+
+    branch: str
+    """
+    The storage branch.
+    """
+
+    detail: str
+    """
+    What git said when it refused.
+    """
+
+    def error_message(self) -> str:
+        return f"pushing {self.branch} was refused: {self.detail}"
+
+    def suggest_correction(self) -> str:
+        return "Run the write again; if it keeps failing, check access to the remote."

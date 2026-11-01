@@ -4,11 +4,68 @@ The REST paths the API is called at, each built in one place.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from urllib.parse import quote, urlencode
 
 from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.repository import Repository
+
+# %% query parameters
+
+
+class QueryParameter(StrEnum):
+    """
+    The query parameters the REST paths take.
+    """
+
+    STATE = "state"
+    """
+    Which entries to list, by state.
+    """
+
+    PAGE_SIZE = "per_page"
+    """
+    How many entries one page holds.
+    """
+
+    HEAD = "head"
+    """
+    The branch pull requests are listed for, as ``owner:branch``.
+    """
+
+    PULL_REQUEST = "pull_request"
+    """
+    The pull request a listed stack must hold.
+    """
+
+    BRANCH = "branch"
+    """
+    The branch listed workflow runs were triggered on.
+    """
+
+    SEARCH = "q"
+    """
+    The search query.
+    """
+
+
+class StackAction(StrEnum):
+    """
+    What is done to a stack, each at a path segment of that name below it.
+    """
+
+    ADD = "add"
+    """
+    Put pull requests on top.
+    """
+
+    UNSTACK = "unstack"
+    """
+    Take the pull requests out again.
+    """
+
 
 # %% the paths
 
@@ -32,38 +89,58 @@ class RepositoryRoute:
         """
         return 100
 
+    def listing(
+        self, path: str, filters: Mapping[QueryParameter, str | int] | None = None
+    ) -> str:
+        """
+        :param path: A listing's path.
+        :param filters: Query parameters narrowing the listing.
+        :return: Its first page, as large as GitHub hands out.
+        """
+        query = {**(filters or {}), QueryParameter.PAGE_SIZE: self.page_size}
+        return f"{path}?{urlencode(query, safe=':')}"
+
+    @property
+    def root(self) -> str:
+        """:return: The repository itself."""
+        return self.repository.api_path
+
+    @property
+    def pull_requests(self) -> str:
+        """:return: The repository's pull requests."""
+        return f"{self.root}/pulls"
+
     def pull_requests_for_head(self, owner: str, branch: str) -> str:
         """
         :param owner: Whose branch to search for.
         :param branch: The branch's name.
         :return: The search for pull requests opened from it, in any state.
         """
-        query = urlencode(
-            {"head": f"{owner}:{branch}", "state": "all", "per_page": self.page_size},
-            safe=":",
+        return self.listing(
+            self.pull_requests,
+            {QueryParameter.HEAD: f"{owner}:{branch}", QueryParameter.STATE: "all"},
         )
-        return f"{self.repository.api_path}/pulls?{query}"
 
     def pull_request(self, number: int) -> str:
         """
         :param number: The pull request's number.
         :return: The pull request itself.
         """
-        return f"{self.repository.api_path}/pulls/{number}"
+        return f"{self.pull_requests}/{number}"
 
     def reviews(self, number: int) -> str:
         """
         :param number: The pull request's number.
         :return: Its submitted reviews.
         """
-        return f"{self.pull_request(number)}/reviews?per_page={self.page_size}"
+        return self.listing(f"{self.pull_request(number)}/reviews")
 
     def review_comments(self, number: int) -> str:
         """
         :param number: The pull request's number.
         :return: Every review comment on it, across all its threads.
         """
-        return f"{self.pull_request(number)}/comments?per_page={self.page_size}"
+        return self.listing(f"{self.pull_request(number)}/comments")
 
     def review_threads(self, number: int) -> str:
         """
@@ -81,30 +158,14 @@ class RepositoryRoute:
         :param sha: The commit.
         :return: The check runs reported against it.
         """
-        return (
-            f"{self.repository.api_path}/commits/{sha}/check-runs"
-            f"?per_page={self.page_size}"
-        )
+        return self.listing(f"{self.root}/commits/{sha}/check-runs")
 
     def commit_status(self, sha: str) -> str:
         """
         :param sha: The commit.
         :return: The statuses posted against it.
         """
-        return (
-            f"{self.repository.api_path}/commits/{sha}/status"
-            f"?per_page={self.page_size}"
-        )
-
-    @property
-    def root(self) -> str:
-        """:return: The repository itself."""
-        return self.repository.api_path
-
-    @property
-    def pull_requests(self) -> str:
-        """:return: The repository's pull requests."""
-        return f"{self.root}/pulls"
+        return self.listing(f"{self.root}/commits/{sha}/status")
 
     def issues(self, **filters: str) -> str:
         """
@@ -115,7 +176,7 @@ class RepositoryRoute:
         return f"{self.root}/issues{query}"
 
     def issue(self, number: int) -> str:
-        """:param number: The issue.
+        """:param number: The issue or pull request.
         :return: That issue."""
         return f"{self.root}/issues/{number}"
 
@@ -123,6 +184,11 @@ class RepositoryRoute:
         """:param number: The issue or pull request.
         :return: Its comments."""
         return f"{self.issue(number)}/comments"
+
+    def issue_labels(self, number: int) -> str:
+        """:param number: The issue or pull request.
+        :return: The labels it carries."""
+        return f"{self.issue(number)}/labels"
 
     @property
     def labels(self) -> str:
@@ -150,17 +216,28 @@ class RepositoryRoute:
     def workflow_runs(self, branch: str) -> str:
         """:param branch: The branch the runs were triggered on.
         :return: Its workflow runs, newest first."""
-        return f"{self.root}/actions/runs?{urlencode({'branch': branch})}"
+        return f"{self.root}/actions/runs?{urlencode({QueryParameter.BRANCH: branch})}"
+
+    @property
+    def stacks(self) -> str:
+        """:return: The repository's native stacks of pull requests."""
+        return f"{self.root}/stacks"
+
+    def stack(self, number: int) -> str:
+        """:param number: The stack.
+        :return: That stack."""
+        return f"{self.stacks}/{number}"
 
     def stacks_holding(self, number: int) -> str:
         """:param number: The pull request.
         :return: The stacks holding it."""
-        return f"{self.root}/stacks?{urlencode({'pull_request': number})}"
+        return f"{self.stacks}?{urlencode({QueryParameter.PULL_REQUEST: number})}"
 
-    def unstacking(self, number: int) -> str:
+    def stack_action(self, number: int, action: StackAction) -> str:
         """:param number: The stack.
-        :return: Where taking its pull requests out is asked for."""
-        return f"{self.root}/stacks/{number}/unstack"
+        :param action: What is done to it.
+        :return: Where that is asked for."""
+        return f"{self.stack(number)}/{action}"
 
     @staticmethod
     def authenticated_user() -> str:
@@ -170,4 +247,5 @@ class RepositoryRoute:
     @staticmethod
     def review_requests() -> str:
         """:return: The search for open pull requests waiting on the caller's review."""
-        return f"search/issues?{urlencode({'q': 'is:open is:pr review-requested:@me'})}"
+        query = {QueryParameter.SEARCH: "is:open is:pr review-requested:@me"}
+        return f"search/issues?{urlencode(query)}"

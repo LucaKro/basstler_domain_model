@@ -441,11 +441,19 @@ class RestJSONKey(StrEnum):
 
 class IssueState(StrEnum):
     """
-    Whether an issue, or a pull request read as one, is open.
+    The ``state`` REST reads and writes on an issue or a pull request: the
+    :class:`PullRequestState` values REST has, without :attr:`PullRequestState.MERGED`.
     """
 
-    OPEN = "open"
-    CLOSED = "closed"
+    OPEN = PullRequestState.OPEN.value
+    """
+    Open, a draft pull request included.
+    """
+
+    CLOSED = PullRequestState.CLOSED.value
+    """
+    Closed, a merged pull request included.
+    """
 
 
 class IssueStateReason(StrEnum):

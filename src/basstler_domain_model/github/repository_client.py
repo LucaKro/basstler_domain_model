@@ -1,45 +1,34 @@
 """
-Reading and writing a repository's pull requests and labels.
+Reading and writing a repository's pull requests, labels and stacks.
 
 The reading and the writing halves are declared separately, so a caller that must not
-write can be handed a reader and provably cannot. Every write here
-was probed against the live API first: a pull request's *base branch* is the one the
-credential a session carries is refused, which is why retargeting is reported for a
-caller to perform rather than performed.
+write can be handed a reader and provably cannot.
 """
 
 from __future__ import annotations
 
-import urllib.error
-import urllib.parse
-import urllib.request
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import Enum, StrEnum
-from pathlib import Path
+from enum import Enum
 from typing import Any
 
-from basstler_domain_model.environment import GitHubCredentialVariable
 from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.github.exceptions import (
-    GitHubCredentialUnavailableError,
-)
+from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.pull_request_fields import PullRequestPayload
-from basstler_domain_model.github.pull_request_models import CheckStatus
-from basstler_domain_model.github.stack_models import Stack
-from basstler_domain_model.github.rest_models import (
-    RestCheckRunPage,
-    RestCombinedStatusPage,
+from basstler_domain_model.github.routes import (
+    QueryParameter,
+    RepositoryRoute,
+    StackAction,
 )
+from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (
     PullRequestState,
     RestJSONKey,
     RollupState,
 )
-from basstler_domain_model.locations import PathEnumeration
-from basstler_domain_model.repository import GitHubAddress, Repository
+from basstler_domain_model.repository import Repository
 
 # %% what a caller reads and writes
 
@@ -66,11 +55,8 @@ class PullRequestReader(ABC):
 @dataclass(frozen=True)
 class PullRequestWriter(ABC):
     """
-    The three writes a pass makes, each one probed against the live API first.
-
-    Every one of them is available to the credential a session carries; a pull request's
-    *base branch* is the single write that is not, which is why reparenting is the
-    caller's job and none of this is.
+    The three writes a pass makes to a pull request, each one probed against the live
+    API first.
     """
 
     @abstractmethod
@@ -202,101 +188,6 @@ class CredentialHolder(ABC):
         """:return: The login of the account the credential belongs to."""
 
 
-class GitHubPath(PathEnumeration):
-    """
-    The API paths that are not below a repository.
-    """
-
-    AUTHENTICATED_USER = Path("/user")
-    """
-    The account the request's credential belongs to.
-    """
-
-
-class RepositoryPath(PathEnumeration):
-    """
-    The API paths below a repository.
-    """
-
-    PULL_REQUESTS = Path("/pulls")
-    """
-    The repository's pull requests.
-    """
-
-    LABELS = Path("/labels")
-    """
-    The labels defined on the repository.
-    """
-
-    COMMITS = Path("/commits")
-    """
-    The repository's commits.
-    """
-
-    STACKS = Path("/stacks")
-    """
-    The repository's native stacks of pull requests.
-    """
-
-
-class CommitReport(StrEnum):
-    """
-    The listings reported against one commit, below :attr:`RepositoryPath.COMMITS`.
-    """
-
-    CHECK_RUNS = "check-runs"
-    """
-    The check runs reported against it.
-    """
-
-    STATUS = "status"
-    """
-    The commit statuses posted against it.
-    """
-
-
-class StackAction(StrEnum):
-    """
-    What is done to a stack, below its own path.
-    """
-
-    ADD = "add"
-    """
-    Put pull requests on top.
-    """
-
-    UNSTACK = "unstack"
-    """
-    Take the pull requests out again.
-    """
-
-
-class ListingParameter(StrEnum):
-    """
-    The query parameters a paged listing takes.
-    """
-
-    STATE = "state"
-    """
-    Which pull requests to list, by state.
-    """
-
-    PAGE_SIZE = "per_page"
-    """
-    How many entries one page holds.
-    """
-
-    PAGE = "page"
-    """
-    Which page to read, counting from one.
-    """
-
-    PULL_REQUEST = "pull_request"
-    """
-    Which pull request a listed stack must hold.
-    """
-
-
 @dataclass(frozen=True)
 class PullRequestListingSpecification:
     """
@@ -361,9 +252,6 @@ class GitHubRepository(
 ):
     """
     Every pull-request, stack and label call this tooling makes, against one repository.
-
-    ``gh`` is absent from the environment this normally runs in, so the calls are plain
-    authenticated requests rather than a CLI wrapper.
     """
 
     repository: Repository
@@ -371,34 +259,25 @@ class GitHubRepository(
     The repository to read and write.
     """
 
-    token: str
+    api: GitHubApi
     """
-    The credential the requests authenticate with.
-    """
-
-    page_size: int = 100
-    """
-    How many pull requests, stacks or labels to ask for per request.
-    """
-
-    api_root: str = GitHubAddress.API
-    """
-    Where the REST API answers.
+    Makes the calls.
     """
 
     @classmethod
     def from_environment(cls, repository: Repository) -> GitHubRepository:
         """
-        Build a client from whichever credential the environment carries.
-
         :param repository: The repository to read and write.
-        :return: The client.
-        :raises GitHubCredentialUnavailableError: If no token is set.
+        :return: A client calling with the credential :meth:`GitHubApi.from_environment`
+            finds.
+        :raises GitHubCredentialUnavailableError: If no token is found.
         """
-        token = GitHubCredentialVariable.first_token()
-        if token:
-            return cls(repository, token)
-        raise GitHubCredentialUnavailableError(tuple(GitHubCredentialVariable))
+        return cls(repository, GitHubApi.from_environment())
+
+    @property
+    def route(self) -> RepositoryRoute:
+        """:return: The repository's paths."""
+        return RepositoryRoute(self.repository)
 
     def open_pull_requests(self) -> list[PullRequestPayload]:
         """:return: Every open pull request on the repository, oldest page first."""
@@ -408,136 +287,77 @@ class GitHubRepository(
         """:return: Every pull request on the repository, open or closed."""
         return self._pull_requests_in_state(PullRequestListState.ALL)
 
-    def issue(self, number: int) -> Mapping[str, Any]:
+    def issue(self, number: int) -> dict[str, Any]:
         """:param number: The issue or pull request to read.
         :return: It, as the issues API describes it."""
-        return self._call("GET", f"/issues/{number}")
+        return self.api.get(self.route.issue(number))
 
     def _pull_requests_in_state(
         self, state: PullRequestListState
     ) -> list[PullRequestPayload]:
         """
-        Read every page of pull requests in one state.
-
         :param state: Which pull requests to list.
         :return: Them, oldest page first.
         """
-        return self._every_page(
-            RepositoryPath.PULL_REQUESTS, {ListingParameter.STATE: state.query}
+        return self._every_entry(
+            self.route.listing(
+                self.route.pull_requests, {QueryParameter.STATE: state.query}
+            )
         )
 
     def labels(self) -> set[str]:
         return {
             label[RestJSONKey.NAME]
-            for label in self._every_page(RepositoryPath.LABELS, {})
+            for label in self._every_entry(self.route.listing(self.route.labels))
         }
 
     def create_label(self, label: GitHubLabel) -> None:
-        self._call(
+        self.api.request(
             "POST",
-            str(RepositoryPath.LABELS),
+            self.route.labels,
             {RestJSONKey.NAME: label, RestJSONKey.DESCRIPTION: label.description},
         )
 
     def check_state(self, commit: str) -> RollupState:
-        runs = [
-            run.result
-            for page in self._every_page_of_entries(
-                self._commit_report(commit, CommitReport.CHECK_RUNS),
-                RestJSONKey.CHECK_RUNS,
-            )
-            for run in RestCheckRunPage.from_json(page).check_runs
-        ]
-        statuses = [
-            status.result
-            for page in self._every_page_of_entries(
-                self._commit_report(commit, CommitReport.STATUS), RestJSONKey.STATUSES
-            )
-            for status in RestCombinedStatusPage.from_json(page).statuses
-        ]
-        checks = CheckStatus.over(runs + statuses)
+        checks = CommitCheckReader(self.api, self.route).checks(commit)
         return RollupState.NOT_REPORTED if checks is None else checks.state
 
-    @staticmethod
-    def _commit_report(commit: str, report: CommitReport) -> str:
-        """:param commit: The commit reported against.
-        :param report: Which of its listings to read.
-        :return: The listing's path below the repository."""
-        return f"{RepositoryPath.COMMITS}/{commit}/{report}"
-
     def authenticated_login(self) -> str:
-        account = self._request("GET", str(GitHubPath.AUTHENTICATED_USER))
+        account = self.api.get(self.route.authenticated_user())
         return str(account[RestJSONKey.LOGIN])
 
-    def _every_page(
-        self, path: RepositoryPath, filters: Mapping[ListingParameter, str]
-    ) -> list[Any]:
+    def _every_entry(self, listing: str) -> list[Any]:
         """
-        Read a listing below the repository to its end.
-
-        :param path: The listing's path below the repository.
-        :param filters: The query parameters narrowing the listing.
-        :return: Every entry, first page first.
+        :param listing: A paged listing whose pages are lists.
+        :return: Every entry of every page, first page first.
         """
-        return [
-            entry
-            for page in self._every_page_of_entries(str(path), None, filters)
-            for entry in page
-        ]
-
-    def _every_page_of_entries(
-        self,
-        path: str,
-        entries_key: str | None,
-        filters: Mapping[ListingParameter, str] | None = None,
-    ) -> list[Any]:
-        """
-        Read a paged listing below the repository to its end.
-
-        :param path: The listing's path below the repository.
-        :param entries_key: The key a page holds its entries under, ``None`` when a page
-            is the list of entries itself.
-        :param filters: The query parameters narrowing the listing.
-        :return: Every page, first page first.
-        """
-        pages: list[Any] = []
-        page_number = 1
-        while True:
-            query = urllib.parse.urlencode(
-                {
-                    **(filters or {}),
-                    ListingParameter.PAGE_SIZE: self.page_size,
-                    ListingParameter.PAGE: page_number,
-                }
-            )
-            page = self._call("GET", f"{path}?{query}")
-            pages.append(page)
-            entries = page if entries_key is None else page[entries_key]
-            if len(entries) < self.page_size:
-                return pages
-            page_number += 1
+        return [entry for page in self.api.get_pages(listing) for entry in page]
 
     def pull_request(self, number: int) -> PullRequestPayload:
         """:param number: The pull request to read.
         :return: That pull request."""
-        return self._call("GET", f"{RepositoryPath.PULL_REQUESTS}/{number}")
+        return self.api.get(self.route.pull_request(number))
 
     def replace_labels(self, number: int, labels: Sequence[str]) -> None:
         """
         Write a pull request's complete label set.
 
         :param number: The pull request to write.
-        :param labels: The complete set it must end up with, computed by
-            :meth:`stack.LabelWrite.replacing` - this call replaces rather than adds.
+        :param labels: The complete set it must end up with - this call replaces rather
+            than adds.
         """
-        self._call("PUT", f"/issues/{number}/labels", {"labels": list(labels)})
+        self.api.request(
+            "PUT", self.route.issue_labels(number), {RestJSONKey.LABELS: list(labels)}
+        )
 
     def add_comment(self, number: int, body: str) -> str:
         """:param number: The pull request to comment on.
         :param body: The comment.
         :return: The comment's URL."""
-        created = self._call("POST", f"/issues/{number}/comments", {"body": body})
-        return str(created["html_url"])
+        created = self.api.request(
+            "POST", self.route.issue_comments(number), {RestJSONKey.BODY: body}
+        )
+        return str(created[RestJSONKey.HTML_URL])
 
     def set_description(self, number: int, body: str) -> None:
         """
@@ -546,77 +366,48 @@ class GitHubRepository(
         :param number: The pull request to write.
         :param body: The new description.
         """
-        self._call("PATCH", f"{RepositoryPath.PULL_REQUESTS}/{number}", {"body": body})
+        self.api.request(
+            "PATCH", self.route.pull_request(number), {RestJSONKey.BODY: body}
+        )
 
     def set_base(self, number: int, branch: str) -> None:
-        self._call(
-            "PATCH",
-            f"{RepositoryPath.PULL_REQUESTS}/{number}",
-            {RestJSONKey.BASE: branch},
+        self.api.request(
+            "PATCH", self.route.pull_request(number), {RestJSONKey.BASE: branch}
         )
 
     def stacks(self) -> list[Stack]:
         return [
             Stack.from_json(entry)
-            for entry in self._every_page(RepositoryPath.STACKS, {})
+            for entry in self._every_entry(self.route.listing(self.route.stacks))
         ]
 
     def stack(self, number: int) -> Stack:
-        return Stack.from_json(self._call("GET", f"{RepositoryPath.STACKS}/{number}"))
+        return Stack.from_json(self.api.get(self.route.stack(number)))
 
     def stack_of(self, pull_request: int) -> Stack | None:
-        query = urllib.parse.urlencode({ListingParameter.PULL_REQUEST: pull_request})
-        found = self._call("GET", f"{RepositoryPath.STACKS}?{query}")
+        found = self.api.get(self.route.stacks_holding(pull_request))
         return Stack.from_json(found[0]) if found else None
 
     def create_stack(self, pull_requests: Sequence[int]) -> Stack:
         return Stack.from_json(
-            self._call(
+            self.api.request(
                 "POST",
-                str(RepositoryPath.STACKS),
+                self.route.stacks,
                 {RestJSONKey.PULL_REQUESTS: list(pull_requests)},
             )
         )
 
     def add_to_stack(self, stack: Stack, pull_requests: Sequence[int]) -> Stack:
         return Stack.from_json(
-            self._call(
+            self.api.request(
                 "POST",
-                f"{RepositoryPath.STACKS}/{stack.number}/{StackAction.ADD}",
+                self.route.stack_action(stack.number, StackAction.ADD),
                 {RestJSONKey.PULL_REQUESTS: list(pull_requests)},
             )
         )
 
     def unstack(self, stack: Stack) -> Stack | None:
-        remaining = self._call(
-            "POST", f"{RepositoryPath.STACKS}/{stack.number}/{StackAction.UNSTACK}"
+        remaining = self.api.request(
+            "POST", self.route.stack_action(stack.number, StackAction.UNSTACK)
         )
         return None if remaining is None else Stack.from_json(remaining)
-
-    def _call(
-        self, method: str, path: str, payload: Mapping[str, Any] | None = None
-    ) -> Any:
-        """
-        Make one authenticated API call below this repository.
-
-        :param method: The HTTP method.
-        :param path: The path below the repository, starting with a slash.
-        :param payload: The JSON body, absent for a read.
-        :return: The decoded response.
-        :raises GitHubRequestFailed: If the API answers with an error status.
-        """
-        return self._request(method, f"/repos/{self.repository}{path}", payload)
-
-    def _request(
-        self, method: str, path: str, payload: Mapping[str, Any] | None = None
-    ) -> Any:
-        """
-        Make one authenticated API call.
-
-        :param method: The HTTP method.
-        :param path: The path below the API root, starting with a slash.
-        :param payload: The JSON body, absent for a read.
-        :return: The decoded response, ``None`` when it has no body.
-        :raises GitHubRequestFailed: If the API answers with an error status.
-        """
-        return GitHubApi(self.token, self.api_root).request(method, path, payload)

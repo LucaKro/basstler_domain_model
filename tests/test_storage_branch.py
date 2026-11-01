@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.git.commands import (
+    GitCommandRunner,
+    RemoteBranch,
+    RemoteName,
+)
 from basstler_domain_model.git.storage_branch import StorageBranch
 
 # %% fixtures
@@ -48,7 +52,7 @@ def storage(remote: Path, tmp_path: Path, name: str) -> StorageBranch:
     git.run("clone", "--quiet", str(remote), name)
     clone = GitCommandRunner(tmp_path / name)
     identify(clone)
-    return StorageBranch(clone, "origin", "storage", "refs/storage/branch")
+    return StorageBranch(clone, RemoteBranch(RemoteName.ORIGIN, "storage"))
 
 
 # %% reading and writing

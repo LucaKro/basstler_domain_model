@@ -85,6 +85,44 @@ class GitCommandResult(CommandResult):
 # %% remotes
 
 
+class RemoteName(StrEnum):
+    """
+    The remote names git gives a meaning of their own.
+    """
+
+    ORIGIN = "origin"
+    """
+    The remote a clone starts with.
+    """
+
+
+@dataclass(frozen=True)
+class RemoteBranch:
+    """
+    One branch on one remote, and where a fetch of it is kept.
+    """
+
+    remote: str
+    """
+    The remote's name in the checkout.
+    """
+
+    name: str
+    """
+    The branch's name on the remote.
+    """
+
+    @property
+    def reference(self) -> str:
+        """:return: The branch's full reference, as the remote has it."""
+        return f"refs/heads/{self.name}"
+
+    @property
+    def tracking_reference(self) -> str:
+        """:return: The remote-tracking reference a fetch of the branch moves."""
+        return f"refs/remotes/{self.remote}/{self.name}"
+
+
 @dataclass(frozen=True)
 class Remote:
     """
@@ -209,13 +247,22 @@ class GitCommandRunner:
         :param tracking_remote: The remote whose tracking refs the branch is kept under.
         :return: The finished fetch, whose failure is an expected outcome.
         """
+        tracked = RemoteBranch(tracking_remote, branch)
         return self.attempt(
             "fetch",
             "--quiet",
             "--no-write-fetch-head",
             location,
-            f"+refs/heads/{branch}:refs/remotes/{tracking_remote}/{branch}",
+            f"+{tracked.reference}:{tracked.tracking_reference}",
         )
+
+    def has_remote_branch(self, branch: RemoteBranch) -> bool:
+        """
+        :param branch: A branch on a remote.
+        :return: Whether the remote has it.
+        :raises GitCommandFailed: If the remote cannot be reached.
+        """
+        return bool(self.run("ls-remote", branch.remote, branch.reference))
 
     def commit_or_none(self, reference: str) -> str | None:
         """:param reference: A ref that may not exist.
@@ -334,6 +381,13 @@ class GitCommandRunner:
         return self.attempt(
             "push", "--quiet", *lease, proposed.remote, proposed.refspec
         )
+
+    def delete_remote_branch(self, branch: RemoteBranch) -> GitCommandResult:
+        """
+        :param branch: The branch to delete from its remote.
+        :return: The finished push deleting it, whose failure the caller reports.
+        """
+        return self.push(ProposedPush(branch.remote, f":{branch.reference}"))
 
     def remotes(self) -> list[Remote]:
         """:return: Every remote of the checkout, in the order git lists them."""

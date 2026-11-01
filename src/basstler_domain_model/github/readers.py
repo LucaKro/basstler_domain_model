@@ -16,19 +16,17 @@ from basstler_domain_model.repository import (
     Repository,
 )
 from basstler_domain_model.github.clients import GitHubApi, GraphQLClient, RestClient
+from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.routes import RepositoryRoute
 from basstler_domain_model.github.exceptions import (
     UpstreamPullRequestNotFound,
 )
 from basstler_domain_model.github.pull_request_models import (
-    CheckStatus,
     PullRequestForBranchResult,
     ReviewThreadsPageResult,
     UpstreamPullRequestSnapshot,
 )
 from basstler_domain_model.github.rest_models import (
-    RestCheckRunPage,
-    RestCombinedStatusPage,
     RestPullRequestSummary,
     RestReview,
     RestReviewComment,
@@ -241,7 +239,9 @@ class RestPullRequestReader(PullRequestSource):
             url=pull_request.url,
             reviews=self._reviews(pull_request_number),
             threads=self._threads(pull_request_number),
-            checks=self._checks(pull_request.head.sha),
+            checks=CommitCheckReader(self.client, self.route).checks(
+                pull_request.head.sha
+            ),
         )
 
     def _reviews(self, pull_request_number: int) -> list[Review]:
@@ -276,25 +276,6 @@ class RestPullRequestReader(PullRequestSource):
             RestReviewThread.from_json(entry).thread(comments)
             for entry in self.client.get(self.route.review_threads(pull_request_number))
         ]
-
-    def _checks(self, sha: str) -> CheckStatus | None:
-        """
-        Read the check runs and the commit statuses, which REST reports apart.
-
-        :param sha: The head commit.
-        :return: The checks, or ``None`` when nothing has reported.
-        """
-        runs = [
-            run.result
-            for page in self.client.get_pages(self.route.check_runs(sha))
-            for run in RestCheckRunPage.from_json(page).check_runs
-        ]
-        statuses = [
-            status.result
-            for page in self.client.get_pages(self.route.commit_status(sha))
-            for status in RestCombinedStatusPage.from_json(page).statuses
-        ]
-        return CheckStatus.over(runs + statuses)
 
 
 class ReadSource(StrEnum):

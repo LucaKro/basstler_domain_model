@@ -9,8 +9,10 @@ import json
 from http import HTTPStatus
 
 from basstler_domain_model.github.pull_request_fields import PullRequestHeadKey
+from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import GitHubRepository
+from basstler_domain_model.github.routes import RepositoryRoute
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import PullRequestState, RestJSONKey
 from basstler_domain_model.repository import Repository
@@ -41,7 +43,7 @@ def recorded_stack(location: DatasetLocation) -> Stack:
 def client(api: ReplayedApi) -> GitHubRepository:
     """:param api: The replayed API.
     :return: A client calling it."""
-    return GitHubRepository(REPOSITORY, "a-token", api_root=api.url)
+    return GitHubRepository(REPOSITORY, GitHubApi("a-token", api.url))
 
 
 def stacks_path(suffix: str = "") -> str:
@@ -110,7 +112,7 @@ def test_a_pull_request_in_no_stack_has_none():
 
 
 def test_every_stack_is_listed():
-    path = stacks_path("?per_page=100&page=1")
+    path = stacks_path(f"?per_page={RepositoryRoute.page_size}")
     answers = {
         ("GET", path): RecordedAnswer.from_file(
             HTTPStatus.OK, DatasetLocation.STACKS_LISTED

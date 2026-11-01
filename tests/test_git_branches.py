@@ -9,7 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.git.commands import GitCommandRunner
+from basstler_domain_model.git.commands import (
+    GitCommandRunner,
+    RemoteBranch,
+    RemoteName,
+)
 
 # %% fixtures
 
@@ -59,6 +63,48 @@ def test_a_remote_that_names_no_repository_has_none(checkout: GitCommandRunner):
     checkout.run("remote", "add", "local", "/a/plain/path")
 
     assert checkout.remotes()[0].repository is None
+
+
+@pytest.fixture
+def published(checkout: GitCommandRunner, tmp_path: Path) -> RemoteBranch:
+    """:return: ``main``, pushed to a bare ``origin`` of the checkout."""
+    remote = tmp_path / "remote.git"
+    checkout.run("init", "--quiet", "--bare", str(remote))
+    checkout.run("remote", "add", RemoteName.ORIGIN, str(remote))
+    branch = RemoteBranch(RemoteName.ORIGIN, "main")
+    checkout.run("push", "--quiet", branch.remote, f"HEAD:{branch.reference}")
+    return branch
+
+
+def test_a_pushed_branch_is_on_its_remote(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    assert checkout.has_remote_branch(published)
+
+
+def test_a_branch_never_pushed_is_not_on_the_remote(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    assert not checkout.has_remote_branch(RemoteBranch(published.remote, "elsewhere"))
+
+
+def test_a_deleted_branch_is_gone_from_its_remote(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    deleted = checkout.delete_remote_branch(published)
+
+    assert deleted.succeeded
+    assert not checkout.has_remote_branch(published)
+
+
+def test_a_fetched_branch_moves_only_its_tracking_reference(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    checkout.fetch_branch(published.remote, published.name, published.remote)
+
+    assert checkout.commit_at(published.tracking_reference) == checkout.commit_at(
+        "HEAD"
+    )
 
 
 # %% committing without a checkout

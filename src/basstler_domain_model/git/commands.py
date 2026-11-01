@@ -354,11 +354,19 @@ class GitCommandRunner:
         Commit the current content of some paths.
 
         :param message: The commit message.
-        :param paths: The files to commit, as they are in the working tree.
+        :param paths: The files to commit, as they are in the working tree; one no
+            longer there is committed as removed.
         :return: The new commit.
-        :raises GitCommandFailed: If a path does not exist, or nothing changed.
+        :raises GitCommandFailed: If nothing changed.
         """
-        self.run("add", "--", *map(str, paths))
+        present = [
+            str(path) for path in paths if (self.working_directory / path).exists()
+        ]
+        removed = [str(path) for path in paths if str(path) not in present]
+        if present:
+            self.run("add", "--", *present)
+        if removed:
+            self.run("rm", "--quiet", "--cached", "--ignore-unmatch", "--", *removed)
         self.run("commit", "--quiet", "--message", message)
         return self.commit_at("HEAD")
 

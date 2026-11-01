@@ -208,3 +208,16 @@ def test_a_kept_reset_keeps_uncommitted_changes(checkout: GitCommandRunner):
 
     assert checkout.commit_at("HEAD") == checkout.commit_at("rewritten")
     assert (checkout.working_directory / "README.md").read_text() == "edited\n"
+
+
+@pytest.mark.parametrize("already_staged", [False, True])
+def test_a_commit_of_a_removed_path_removes_it(
+    checkout: GitCommandRunner, already_staged: bool
+):
+    (checkout.working_directory / "README.md").unlink()
+    if already_staged:
+        checkout.run("rm", "--quiet", "--cached", "README.md")
+
+    commit = checkout.commit("Remove the readme", [Path("README.md")])
+
+    assert checkout.run("ls-tree", "--name-only", commit) == ""

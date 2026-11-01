@@ -262,7 +262,17 @@ class GitCommandRunner:
         :return: Whether the remote has it.
         :raises GitCommandFailed: If the remote cannot be reached.
         """
-        return bool(self.run("ls-remote", branch.remote, branch.reference))
+        return self.remote_branch_tip(branch) is not None
+
+    def remote_branch_tip(self, branch: RemoteBranch) -> str | None:
+        """
+        :param branch: A branch on a remote.
+        :return: The commit it is at on the remote, ``None`` when the remote has no
+            such branch.
+        :raises GitCommandFailed: If the remote cannot be reached.
+        """
+        listed = self.run("ls-remote", branch.remote, branch.reference)
+        return listed.split()[0] if listed else None
 
     def commit_or_none(self, reference: str) -> str | None:
         """:param reference: A ref that may not exist.

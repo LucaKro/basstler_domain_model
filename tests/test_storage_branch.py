@@ -5,11 +5,14 @@ and written without a checkout, by several writers.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
 from basstler_domain_model.git.commands import (
+    GitCommandResult,
     GitCommandRunner,
     RemoteBranch,
     RemoteName,
@@ -112,3 +115,31 @@ def test_a_write_leaves_the_checkout_untouched(remote, tmp_path):
         branch.git.run("status", "--porcelain"),
         branch.git.run("rev-parse", "HEAD"),
     ) == before
+
+
+@dataclass(frozen=True)
+class GitCallsRecorded(GitCommandRunner):
+    """
+    Runs git, keeping the subcommand of every call.
+    """
+
+    subcommands: list[str] = field(default_factory=list)
+    """
+    The subcommand of every call, in order.
+    """
+
+    def attempt(
+        self, *arguments: str, environment: Mapping[str, str] | None = None
+    ) -> GitCommandResult:
+        self.subcommands.append(arguments[0])
+        return super().attempt(*arguments, environment=environment)
+
+
+def test_a_branch_that_did_not_move_is_not_fetched_again(remote, tmp_path):
+    storage(remote, tmp_path, "writer").write({Path("file.md"): "text\n"}, "Write")
+    reader = storage(remote, tmp_path, "reader")
+    reader.fetch()
+    recorded = GitCallsRecorded(reader.git.working_directory)
+
+    assert StorageBranch(recorded, reader.branch).fetch() is True
+    assert "fetch" not in recorded.subcommands

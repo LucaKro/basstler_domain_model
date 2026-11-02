@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from basstler_domain_model.environment import GitIdentityVariable
+from basstler_domain_model.environment import GitIdentityVariable, GitVariable
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
@@ -486,4 +486,21 @@ def test_a_branch_the_remote_lacks_has_no_tip(
 ):
     assert (
         checkout.remote_branch_tip(RemoteBranch(published.remote, "elsewhere")) is None
+    )
+
+
+# %% running git unattended
+
+
+def test_git_never_prompts_on_the_terminal(tmp_path: Path) -> None:
+    git = GitCommandRunner(tmp_path)
+
+    prompt = git.run(
+        "-c",
+        f"alias.prompt=!printenv {GitVariable.TERMINAL_PROMPT}",
+        "prompt",
+    )
+
+    assert (
+        prompt == GitCommandRunner.unattended_environment[GitVariable.TERMINAL_PROMPT]
     )

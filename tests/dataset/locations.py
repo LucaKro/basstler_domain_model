@@ -223,6 +223,11 @@ class DatasetLocation(PathEnumeration):
     The same pull request, its head missing the commit it is at.
     """
 
+    SLEEPING_SCRIPT = DIRECTORY / "commands" / "sleeps.py"
+    """
+    A Python script that sleeps far longer than any test waits for it.
+    """
+
     CHECK_RUN_UNRECOGNISED_CONCLUSION = (
         DIRECTORY / "checks" / "check-run-unrecognised-conclusion.json"
     )

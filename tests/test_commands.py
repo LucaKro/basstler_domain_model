@@ -6,8 +6,11 @@ could run.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from basstler_domain_model.commands import CommandRunner
+
+from .dataset.locations import DatasetLocation
 
 # %% running
 
@@ -32,4 +35,12 @@ def test_a_command_that_is_not_installed_comes_back_as_a_result(tmp_path):
     result = CommandRunner(tmp_path).run("a-command-that-does-not-exist")
 
     assert not result.succeeded
+    assert result.exit_status is None
+
+
+def test_a_command_that_runs_too_long_comes_back_unfinished(tmp_path: Path) -> None:
+    result = CommandRunner(tmp_path).run(
+        sys.executable, str(DatasetLocation.SLEEPING_SCRIPT), timeout_seconds=0.2
+    )
+
     assert result.exit_status is None

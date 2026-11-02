@@ -6,6 +6,8 @@ logs over HTTP, against answers replayed by a local server.
 from __future__ import annotations
 
 import json
+import socket
+from collections.abc import Iterator
 from http import HTTPStatus
 
 import pytest
@@ -155,6 +157,36 @@ def test_a_relative_redirect_is_followed_on_the_api_s_host_with_the_token() -> N
         GitHubApi(TOKEN, api.url).get(old)
 
     assert (api.sent[1].path, api.sent[1].authorization) == (new, f"Bearer {TOKEN}")
+
+
+# %% calls that get no answer
+
+
+@pytest.fixture
+def silent_address() -> Iterator[str]:
+    """:return: An address that accepts connections and never answers them."""
+    with socket.create_server(("127.0.0.1", 0)) as listening:
+        host, port = listening.getsockname()
+        yield f"http://{host}:{port}"
+
+
+def test_a_call_that_gets_no_answer_in_time_is_raised_without_a_status(
+    silent_address: str,
+) -> None:
+    with pytest.raises(GitHubRequestFailed) as raised:
+        GitHubApi(TOKEN, silent_address, timeout_seconds=0.2).get("/user")
+
+    assert raised.value.status is None
+
+
+def test_a_call_that_cannot_connect_is_raised_without_a_status() -> None:
+    with socket.create_server(("127.0.0.1", 0)) as closed:
+        host, port = closed.getsockname()
+
+    with pytest.raises(GitHubRequestFailed) as raised:
+        GitHubApi(TOKEN, f"http://{host}:{port}").get("/user")
+
+    assert raised.value.status is None
 
 
 # %% GraphQL

@@ -347,19 +347,6 @@ class UpstreamPullRequestSnapshot:
         """:return: The threads still awaiting action."""
         return [thread for thread in self.threads if not thread.is_resolved]
 
-    def thread(self, identifier: str) -> ReviewThread:
-        """
-        Look one thread up by its node identifier.
-
-        :param identifier: The thread's node identifier.
-        :return: The matching thread.
-        :raises KeyError: If no thread carries that identifier.
-        """
-        for thread in self.threads:
-            if thread.identifier == identifier:
-                return thread
-        raise KeyError(identifier)
-
 
 @dataclass(frozen=True)
 class PullRequestForBranchResult(JSONModel):

@@ -200,9 +200,10 @@ class GitCommandRunner:
         :return: Runs git in the new checkout.
         :raises GitCommandFailed: If the repository cannot be cloned there.
         """
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        cls(destination.parent).run("clone", "--quiet", url, str(destination))
-        return cls(destination)
+        checkout = destination.absolute()
+        checkout.parent.mkdir(parents=True, exist_ok=True)
+        cls(checkout.parent).run("clone", "--quiet", url, str(checkout))
+        return cls(checkout)
 
     def attempt(
         self, *arguments: str, environment: Mapping[str, str] | None = None

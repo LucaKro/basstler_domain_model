@@ -13,12 +13,13 @@ import pytest
 
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.exceptions import NotAnIssueError
-from basstler_domain_model.github.issue_models import Issue
+from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import GitHubRepository
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
+    ClosingKeyword,
     IssueState,
     IssueStateReason,
     RestJSONKey,
@@ -308,6 +309,29 @@ def test_a_label_with_a_colour_is_created_in_it():
         RestJSONKey.DESCRIPTION: ColouredLabel.description,
         RestJSONKey.COLOR: ColouredLabel.color,
     }
+
+
+def test_an_issue_s_comments_are_read_with_their_authors():
+    listing = ROUTE.listing(ROUTE.issue_comments(9))
+    entries = [
+        {RestJSONKey.USER: {RestJSONKey.LOGIN: "an-owner"}, RestJSONKey.BODY: "First"},
+        {RestJSONKey.USER: {RestJSONKey.LOGIN: "someone"}, RestJSONKey.BODY: "Second"},
+    ]
+    answers = {
+        ("GET", f"/{listing}"): RecordedAnswer(HTTPStatus.OK, json.dumps(entries))
+    }
+
+    with ReplayedApi(answers) as api:
+        comments = client(api).comments(9)
+
+    assert comments == [
+        IssueComment("an-owner", "First"),
+        IssueComment("someone", "Second"),
+    ]
+
+
+def test_a_closing_reference_is_the_keyword_before_the_issue_s_number():
+    assert ClosingKeyword.FIXES.reference(3) == f"{ClosingKeyword.FIXES} #3"
 
 
 # %% review requests

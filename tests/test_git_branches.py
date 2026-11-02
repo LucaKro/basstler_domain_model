@@ -178,6 +178,33 @@ def test_a_commit_on_a_parent_keeps_the_parent_s_files(checkout: GitCommandRunne
     assert checkout.run("rev-parse", f"{commit}^") == parent
 
 
+# %% writing out a commit's files
+
+
+def test_a_commit_s_files_are_written_into_a_directory(
+    checkout: GitCommandRunner, tmp_path: Path
+):
+    start = checkout.commit_at("HEAD")
+    commit_on(checkout, "later", "main", "later.txt")
+    destination = tmp_path / "files"
+
+    checkout.export_files(start, destination)
+
+    assert sorted(path.name for path in destination.iterdir()) == ["README.md"]
+    assert (destination / "README.md").read_text() == "start\n"
+
+
+def test_writing_out_a_commit_s_files_leaves_the_checkout_untouched(
+    checkout: GitCommandRunner, tmp_path: Path
+):
+    (checkout.working_directory / "README.md").write_text("changed\n")
+    before = checkout.run("status", "--porcelain")
+
+    checkout.export_files("HEAD", tmp_path / "files")
+
+    assert checkout.run("status", "--porcelain") == before
+
+
 # %% restacking
 
 

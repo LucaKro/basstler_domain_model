@@ -534,6 +534,25 @@ class GitCommandRunner:
         parents = () if parent is None else ("-p", parent)
         return self.run("commit-tree", tree, *parents, "-m", message)
 
+    def export_files(self, commit: str, destination: Path) -> None:
+        """
+        Write the files a commit records into a directory, leaving the checkout, its
+        index and ``HEAD`` alone.
+
+        :param commit: Any reference git can resolve to a commit.
+        :param destination: The directory, created when absent.
+        """
+        destination.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as directory:
+            index = {GitVariable.INDEX_FILE: str(Path(directory) / "index")}
+            self.run("read-tree", commit, environment=index)
+            self.run(
+                "checkout-index",
+                "--all",
+                f"--prefix={destination.resolve()}/",
+                environment=index,
+            )
+
     def rebase_stack(self, onto: str, top: str) -> GitCommandResult:
         """
         Replay a stack of branches onto a moved base, moving every branch inside it.

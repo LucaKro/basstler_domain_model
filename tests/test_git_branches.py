@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from basstler_domain_model.environment import GitIdentityVariable
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
@@ -319,6 +320,20 @@ def test_a_commit_of_a_removed_directory_removes_its_files(
     commit = checkout.commit("Remove the plugin", [Path("plugin")])
 
     assert checkout.run("ls-tree", "--name-only", commit) == "README.md"
+
+
+# %% identity
+
+
+def test_the_identity_variables_take_precedence_over_the_configuration(
+    checkout: GitCommandRunner, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(GitIdentityVariable.AUTHOR_NAME, "Environment Author")
+    monkeypatch.setenv(GitIdentityVariable.AUTHOR_EMAIL, "environment@example.com")
+
+    author = checkout.run("var", "GIT_AUTHOR_IDENT")
+
+    assert author.startswith("Environment Author <environment@example.com>")
 
 
 # %% cloning

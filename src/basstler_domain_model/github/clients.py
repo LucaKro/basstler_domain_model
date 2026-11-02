@@ -84,6 +84,45 @@ class RestClient(ABC):
         """
 
 
+class RestWriter(ABC):
+    """
+    Makes REST calls to GitHub, writes included.
+    """
+
+    @abstractmethod
+    def attempt(
+        self, method: str, path: str, payload: Mapping[str, Any] | None = None
+    ) -> RestAnswer:
+        """
+        Make one call whose refusal is an expected outcome.
+
+        :param method: The HTTP method.
+        :param path: The path below the API root, or a whole address the API handed out.
+        :param payload: The JSON body, absent for a read.
+        :return: What the API answered, a refusal included.
+        """
+
+    @abstractmethod
+    def request(
+        self, method: str, path: str, payload: Mapping[str, Any] | None = None
+    ) -> Any:
+        """
+        Make one call the caller depends on.
+
+        :param method: The HTTP method.
+        :param path: The path below the API root.
+        :param payload: The JSON body, absent for a read.
+        :return: The decoded answer, ``None`` when it has no body.
+        :raises GitHubRequestFailed: If the API refuses the call.
+        """
+
+
+class RestApi(RestClient, RestWriter, ABC):
+    """
+    GitHub's REST API, read and written.
+    """
+
+
 # %% one answer
 
 
@@ -129,6 +168,25 @@ class RestAnswer:
         return 200 <= self.status < 300
 
     @property
+    def refused(self) -> bool:
+        """:return: Whether GitHub refused the call to the credential: forbidden, or
+        hidden from it as not found."""
+        return self.status in {HTTPStatus.FORBIDDEN, HTTPStatus.NOT_FOUND}
+
+    def raise_if_failed(self, method: str, path: str) -> RestAnswer:
+        """
+        :param method: The HTTP method of the call this answers.
+        :param path: The path it was made to.
+        :return: This answer, when it succeeded.
+        :raises GitHubRequestFailed: When it did not.
+        """
+        if not self.succeeded:
+            raise GitHubRequestFailed(
+                status=self.status, detail=self.text, method=method, path=path
+            )
+        return self
+
+    @property
     def body(self) -> Any:
         """:return: The body decoded as JSON, ``None`` when it is empty."""
         return json.loads(self.text) if self.text else None
@@ -164,7 +222,7 @@ class NoAutomaticRedirect(urllib.request.HTTPRedirectHandler):
 
 
 @dataclass(frozen=True)
-class GitHubApi(GraphQLClient, RestClient, JobLogReader):
+class GitHubApi(GraphQLClient, RestApi, JobLogReader):
     """
     GitHub's REST and GraphQL APIs, called over HTTP with a token.
     """
@@ -195,14 +253,8 @@ class GitHubApi(GraphQLClient, RestClient, JobLogReader):
         self, method: str, path: str, payload: Mapping[str, Any] | None = None
     ) -> RestAnswer:
         """
-        Make one call whose refusal is an expected outcome, following a redirect, with
-        the token only when it stays on the API's host.
-
-        :param method: The HTTP method.
-        :param path: The path below the API root, with or without a leading slash, or a
-            whole address the API handed out.
-        :param payload: The JSON body, absent for a read.
-        :return: What the API answered, a refusal included.
+        Follows a redirect, with the token only when it stays on the API's host; see
+        :meth:`RestWriter.attempt`.
         """
         address = (
             path
@@ -221,16 +273,7 @@ class GitHubApi(GraphQLClient, RestClient, JobLogReader):
     def request(
         self, method: str, path: str, payload: Mapping[str, Any] | None = None
     ) -> Any:
-        """
-        Make one call the caller depends on.
-
-        :param method: The HTTP method.
-        :param path: The path below the API root.
-        :param payload: The JSON body, absent for a read.
-        :return: The decoded answer, ``None`` when it has no body.
-        :raises GitHubRequestFailed: If the API refuses the call.
-        """
-        return self._succeeded(method, path, self.attempt(method, path, payload)).body
+        return self.attempt(method, path, payload).raise_if_failed(method, path).body
 
     def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         """
@@ -241,8 +284,8 @@ class GitHubApi(GraphQLClient, RestClient, JobLogReader):
             PullRequestJSONKey.QUERY: query,
             PullRequestJSONKey.VARIABLES: variables,
         }
-        answer = self._succeeded(
-            "POST", "graphql", self.attempt("POST", "graphql", payload)
+        answer = self.attempt("POST", "graphql", payload).raise_if_failed(
+            "POST", "graphql"
         )
         return GraphQLResponse.from_json(answer.text).result()
 
@@ -259,7 +302,7 @@ class GitHubApi(GraphQLClient, RestClient, JobLogReader):
         pages = []
         address: str | None = path
         while address is not None:
-            answer = self._succeeded("GET", address, self.attempt("GET", address))
+            answer = self.attempt("GET", address).raise_if_failed("GET", address)
             pages.append(answer.body)
             address = answer.next_page
         return pages
@@ -269,22 +312,7 @@ class GitHubApi(GraphQLClient, RestClient, JobLogReader):
         :raises GitHubRequestFailed: If the API refuses the call.
         """
         path = repository.job_log_path(job_identifier)
-        return self._succeeded("GET", path, self.attempt("GET", path)).text
-
-    @staticmethod
-    def _succeeded(method: str, path: str, answer: RestAnswer) -> RestAnswer:
-        """
-        :param method: The HTTP method the answer is to.
-        :param path: The path it is to.
-        :param answer: The answer.
-        :return: It, when it succeeded.
-        :raises GitHubRequestFailed: When it did not.
-        """
-        if not answer.succeeded:
-            raise GitHubRequestFailed(
-                status=answer.status, detail=answer.text, method=method, path=path
-            )
-        return answer
+        return self.attempt("GET", path).raise_if_failed("GET", path).text
 
     def _exchange(
         self,

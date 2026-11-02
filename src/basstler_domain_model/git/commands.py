@@ -173,6 +173,11 @@ class ProposedPush:
     this checkout last saw it.
     """
 
+    sets_upstream: bool = False
+    """
+    Whether the local branch published then tracks the branch it was published to.
+    """
+
 
 @dataclass(frozen=True)
 class GitCommandRunner:
@@ -340,13 +345,14 @@ class GitCommandRunner:
 
     def create_branch(self, name: str, start_point: str) -> None:
         """
-        Create a branch and check it out.
+        Create a branch and check it out, tracking no branch: not even a remote's it
+        starts at.
 
         :param name: The new branch.
         :param start_point: What it starts at.
         :raises GitCommandFailed: If the branch exists already.
         """
-        self.run("switch", "--quiet", "--create", name, start_point)
+        self.run("switch", "--quiet", "--no-track", "--create", name, start_point)
 
     def switch_to(self, branch: str) -> None:
         """
@@ -446,8 +452,9 @@ class GitCommandRunner:
         :return: The finished push, whose failure the caller reports rather than forces.
         """
         lease = ["--force-with-lease"] if proposed.with_lease else []
+        upstream = ["--set-upstream"] if proposed.sets_upstream else []
         return self.attempt(
-            "push", "--quiet", *lease, proposed.remote, proposed.refspec
+            "push", "--quiet", *lease, *upstream, proposed.remote, proposed.refspec
         )
 
     def delete_remote_branch(self, branch: RemoteBranch) -> GitCommandResult:

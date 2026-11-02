@@ -56,7 +56,7 @@ class StackedPullRequest(JSONModel):
             state=(
                 PullRequestState.MERGED
                 if data[RestJSONKey.MERGED_AT]
-                else PullRequestState(data[RestJSONKey.STATE])
+                else PullRequestState.from_value(data[RestJSONKey.STATE])
             ),
             draft=data[RestJSONKey.DRAFT],
             branch=data[RestJSONKey.HEAD][PullRequestHeadKey.REFERENCE],

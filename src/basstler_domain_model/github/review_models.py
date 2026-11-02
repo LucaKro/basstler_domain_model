@@ -216,7 +216,7 @@ class Review(JSONModel):
         """
         return cls(
             author=Author.from_json(data[PullRequestJSONKey.AUTHOR]),
-            state=ReviewState[data[PullRequestJSONKey.STATE]],
+            state=ReviewState.from_name(data[PullRequestJSONKey.STATE]),
             body=data[PullRequestJSONKey.BODY],
             submitted_at=data[PullRequestJSONKey.SUBMITTED_AT],
         )
@@ -253,7 +253,7 @@ class BranchPullRequest(JSONModel):
         """
         return cls(
             number=data[PullRequestJSONKey.NUMBER],
-            state=PullRequestState[data[PullRequestJSONKey.STATE]],
+            state=PullRequestState.from_name(data[PullRequestJSONKey.STATE]),
             head_owner=Author.from_json(data[PullRequestJSONKey.HEAD_REPOSITORY_OWNER]),
         )
 

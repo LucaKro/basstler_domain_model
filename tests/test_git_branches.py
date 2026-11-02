@@ -12,6 +12,7 @@ import pytest
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
+    ProposedPush,
     RemoteBranch,
     RemoteName,
 )
@@ -87,6 +88,50 @@ def test_a_branch_never_pushed_is_not_on_the_remote(
     checkout: GitCommandRunner, published: RemoteBranch
 ):
     assert not checkout.has_remote_branch(RemoteBranch(published.remote, "elsewhere"))
+
+
+def upstream(git: GitCommandRunner, branch: str) -> str | None:
+    """
+    :param git: The checkout.
+    :param branch: A local branch.
+    :return: The branch it tracks, ``None`` when it tracks none.
+    """
+    found = git.attempt("rev-parse", "--abbrev-ref", f"{branch}@{{upstream}}")
+    return found.output if found.succeeded else None
+
+
+def test_a_branch_created_from_a_remote_s_branch_tracks_none(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    checkout.run("fetch", "--quiet", published.remote)
+
+    checkout.create_branch("feature", f"{published.remote}/{published.name}")
+
+    assert upstream(checkout, "feature") is None
+
+
+def test_a_push_that_sets_the_upstream_makes_the_branch_track_where_it_went(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    checkout.create_branch("feature", "main")
+    pushed = RemoteBranch(published.remote, "feature")
+
+    checkout.push(
+        ProposedPush(pushed.remote, f"feature:{pushed.reference}", sets_upstream=True)
+    )
+
+    assert upstream(checkout, "feature") == f"{pushed.remote}/{pushed.name}"
+
+
+def test_a_plain_push_leaves_the_branch_tracking_none(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    checkout.create_branch("feature", "main")
+    pushed = RemoteBranch(published.remote, "feature")
+
+    checkout.push(ProposedPush(pushed.remote, f"feature:{pushed.reference}"))
+
+    assert upstream(checkout, "feature") is None
 
 
 def test_a_deleted_branch_is_gone_from_its_remote(

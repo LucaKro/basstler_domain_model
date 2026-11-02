@@ -60,15 +60,22 @@ class LabelWrite:
         """
         Work out the full set that adding and removing labels leaves behind.
 
+        Labels are matched regardless of case, as GitHub matches them, and each is
+        written once, in the case it is first named in.
+
         :param current: The labels the pull request carries now.
         :param added: Labels it must carry afterwards.
         :param removed: Labels it must not carry afterwards.
         :return: The complete set to write.
         :raises ContradictoryLabelWriteError: If a label is both added and removed.
         """
-        added, removed = tuple(added), tuple(removed)
-        contradictory = tuple(label for label in added if label in removed)
+        added = tuple(added)
+        dropped = {label.casefold() for label in removed}
+        contradictory = tuple(label for label in added if label.casefold() in dropped)
         if contradictory:
             raise ContradictoryLabelWriteError(contradictory)
-        kept = [label for label in current if label not in removed]
-        return cls(tuple(kept + [label for label in added if label not in kept]))
+        labels: dict[str, str] = {}
+        for label in (*current, *added):
+            if label.casefold() not in dropped:
+                labels.setdefault(label.casefold(), label)
+        return cls(tuple(labels.values()))

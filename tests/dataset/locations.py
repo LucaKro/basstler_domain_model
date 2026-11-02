@@ -114,6 +114,91 @@ class DatasetLocation(PathEnumeration):
     A ``gh`` that only answers ``gh auth token``, with ``STUB_TOKEN``.
     """
 
+    GRAPHQL_BRANCH_SEARCH = DIRECTORY / "readers" / "graphql" / "branch-search.json"
+    """
+    A head-branch search matching the fork's closed, open and merged pull requests, and
+    another owner's.
+    """
+
+    GRAPHQL_BRANCH_SEARCH_CLOSED = (
+        DIRECTORY / "readers" / "graphql" / "branch-search-closed.json"
+    )
+    """
+    A head-branch search matching only the fork's closed and merged pull requests,
+    newest first.
+    """
+
+    GRAPHQL_BRANCH_SEARCH_FOREIGN = (
+        DIRECTORY / "readers" / "graphql" / "branch-search-foreign.json"
+    )
+    """
+    A head-branch search matching only another owner's pull request.
+    """
+
+    GRAPHQL_THREADS_PAGE_ONE = (
+        DIRECTORY / "readers" / "graphql" / "threads-page-one.json"
+    )
+    """
+    The first page of a pull request's review threads, with a next page.
+    """
+
+    GRAPHQL_THREADS_PAGE_TWO = (
+        DIRECTORY / "readers" / "graphql" / "threads-page-two.json"
+    )
+    """
+    The second and last page of the same pull request's review threads.
+    """
+
+    REST_PULLS_PAGE_ONE = DIRECTORY / "readers" / "rest" / "pulls-page-one.json"
+    """
+    The first page of a head-branch listing: the fork's closed pull request.
+    """
+
+    REST_PULLS_PAGE_TWO = DIRECTORY / "readers" / "rest" / "pulls-page-two.json"
+    """
+    The second page of the same listing: the fork's open pull request.
+    """
+
+    REST_PULL_REQUEST = DIRECTORY / "readers" / "rest" / "pull-request.json"
+    """
+    The fork's open pull request, read by its number.
+    """
+
+    REST_REVIEWS = DIRECTORY / "readers" / "rest" / "reviews.json"
+    """
+    Its submitted reviews.
+    """
+
+    REST_REVIEW_COMMENTS = DIRECTORY / "readers" / "rest" / "review-comments.json"
+    """
+    Every review comment on it.
+    """
+
+    REST_REVIEW_THREADS = DIRECTORY / "readers" / "rest" / "review-threads.json"
+    """
+    Its review threads, naming their comments.
+    """
+
+    REST_CHECK_RUNS = DIRECTORY / "readers" / "rest" / "check-runs.json"
+    """
+    The check runs on its head commit: one passed, one unfinished.
+    """
+
+    REST_COMMIT_STATUS = DIRECTORY / "readers" / "rest" / "commit-status.json"
+    """
+    The commit statuses on its head commit: one failed.
+    """
+
+    REST_CHECK_RUNS_NONE = DIRECTORY / "readers" / "rest" / "check-runs-none.json"
+    """
+    No check runs on a commit.
+    """
+
+    REST_COMMIT_STATUS_NONE = DIRECTORY / "readers" / "rest" / "commit-status-none.json"
+    """
+    No commit statuses on a commit.
+    """
+
     PULL_REQUEST_OPEN = DIRECTORY / "pull_requests" / "open.json"
     """
     An open draft pull request as REST reads it, conflicting with its base.

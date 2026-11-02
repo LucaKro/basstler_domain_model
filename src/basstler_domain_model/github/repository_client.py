@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from basstler_domain_model.github.clients import GitHubApi
+from basstler_domain_model.github.clients import GitHubApi, RestApi
 from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.exceptions import NotAnIssueError
 from basstler_domain_model.github.issue_models import Issue, IssueComment
@@ -57,22 +57,39 @@ class PullRequestReader(ABC):
 
 
 @dataclass(frozen=True)
-class PullRequestWriter(ABC):
+class LabelWriter(ABC):
     """
-    The three writes a pass makes to a pull request, each one probed against the live
-    API first.
+    Writing the labels an issue or pull request carries.
     """
 
     @abstractmethod
     def replace_labels(self, number: int, labels: Sequence[str]) -> None:
-        """:param number: The pull request to write.
-        :param labels: The complete label set it must end up with."""
+        """
+        :param number: The issue or pull request to write.
+        :param labels: The complete label set it must end up with.
+        """
+
+
+@dataclass(frozen=True)
+class Commenter(ABC):
+    """
+    Commenting on an issue or pull request.
+    """
 
     @abstractmethod
     def add_comment(self, number: int, body: str) -> str:
-        """:param number: The pull request to comment on.
+        """
+        :param number: The issue or pull request to comment on.
         :param body: The comment.
-        :return: The comment's URL."""
+        :return: The comment's URL.
+        """
+
+
+@dataclass(frozen=True)
+class PullRequestWriter(LabelWriter, Commenter, ABC):
+    """
+    Writing a pull request's labels, comments and description.
+    """
 
     @abstractmethod
     def set_description(self, number: int, body: str) -> None:
@@ -214,8 +231,9 @@ class RepositorySettings(ABC):
         """
         Have GitHub delete a pull request's branch once it is merged.
 
-        :return: Whether GitHub accepted the change; a credential that may not change
-            settings is refused.
+        :return: Whether GitHub accepted the change; ``False`` only when the credential
+            may not make it.
+        :raises GitHubRequestFailed: If GitHub fails the change for another reason.
         """
 
     @abstractmethod
@@ -227,7 +245,9 @@ class RepositorySettings(ABC):
         """
         Turn the repository's issues on.
 
-        :return: Whether GitHub accepted the change.
+        :return: Whether GitHub accepted the change; ``False`` only when the credential
+            may not make it.
+        :raises GitHubRequestFailed: If GitHub fails the change for another reason.
         """
 
     @abstractmethod
@@ -235,6 +255,7 @@ class RepositorySettings(ABC):
         """
         :return: Whether GitHub Actions may run in the repository, ``None`` when the
             credential may not read that.
+        :raises GitHubRequestFailed: If GitHub fails the read for another reason.
         """
 
     @abstractmethod
@@ -242,12 +263,14 @@ class RepositorySettings(ABC):
         """
         Let GitHub Actions run in the repository.
 
-        :return: Whether GitHub accepted the change.
+        :return: Whether GitHub accepted the change; ``False`` only when the credential
+            may not make it.
+        :raises GitHubRequestFailed: If GitHub fails the change for another reason.
         """
 
 
 @dataclass(frozen=True)
-class IssueBoard(ABC):
+class IssueBoard(LabelWriter, Commenter, ABC):
     """
     Filing, listing, labelling and closing a repository's issues.
     """
@@ -278,13 +301,6 @@ class IssueBoard(ABC):
         """
 
     @abstractmethod
-    def replace_labels(self, number: int, labels: Sequence[str]) -> None:
-        """
-        :param number: The issue or pull request to write.
-        :param labels: The complete label set it must end up with.
-        """
-
-    @abstractmethod
     def add_labels(self, number: int, labels: Sequence[str]) -> None:
         """
         Add labels, leaving every label the issue already carries in place.
@@ -300,14 +316,6 @@ class IssueBoard(ABC):
 
         :param number: The issue or pull request to write.
         :param label: A label it carries.
-        """
-
-    @abstractmethod
-    def add_comment(self, number: int, body: str) -> str:
-        """
-        :param number: The issue or pull request to comment on.
-        :param body: The comment.
-        :return: The comment's URL.
         """
 
     @abstractmethod
@@ -339,6 +347,7 @@ class ReviewRequests(ABC):
         """
 
 
+@dataclass(frozen=True)
 class CommitChecks(ABC):
     """
     Reading the verdict over the checks reported on one commit.
@@ -437,7 +446,7 @@ class GitHubRepository(
     The repository to read and write.
     """
 
-    api: GitHubApi
+    api: RestApi
     """
     Makes the calls.
     """
@@ -586,28 +595,44 @@ class GitHubRepository(
         ).deletes_merged_branches
 
     def turn_on_merged_branch_deletion(self) -> bool:
-        return self.api.attempt(
+        return self._change_setting(
             "PATCH", self.route.root, {RestJSONKey.DELETE_BRANCH_ON_MERGE: True}
-        ).succeeded
+        )
 
     def issues_enabled(self) -> bool:
         return RestRepository.from_json(self.api.get(self.route.root)).issues_enabled
 
     def turn_on_issues(self) -> bool:
-        return self.api.attempt(
+        return self._change_setting(
             "PATCH", self.route.root, {RestJSONKey.HAS_ISSUES: True}
-        ).succeeded
+        )
 
     def actions_enabled(self) -> bool | None:
         permissions = self.api.attempt("GET", self.route.actions_permissions)
-        if not permissions.succeeded:
+        if permissions.refused:
             return None
+        permissions.raise_if_failed("GET", self.route.actions_permissions)
         return bool(permissions.body[RestJSONKey.ENABLED])
 
     def turn_on_actions(self) -> bool:
-        return self.api.attempt(
+        return self._change_setting(
             "PUT", self.route.actions_permissions, {RestJSONKey.ENABLED: True}
-        ).succeeded
+        )
+
+    def _change_setting(self, method: str, path: str, payload: dict[str, Any]) -> bool:
+        """
+        :param method: The HTTP method of the change.
+        :param path: The path it is made at.
+        :param payload: The change.
+        :return: Whether GitHub accepted it; ``False`` only when the credential may not
+            make it.
+        :raises GitHubRequestFailed: If GitHub fails it for another reason.
+        """
+        answer = self.api.attempt(method, path, payload)
+        if answer.refused:
+            return False
+        answer.raise_if_failed(method, path)
+        return True
 
     def open_issue(self, title: str, body: str, labels: Sequence[str]) -> int:
         created = self.api.request(

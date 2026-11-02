@@ -6,13 +6,16 @@ itself, against replayed REST answers.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from http import HTTPStatus
+from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from basstler_domain_model.github.clients import GitHubApi
-from basstler_domain_model.github.exceptions import NotAnIssueError
+from basstler_domain_model.github.clients import GitHubApi, RestAnswer, RestApi
+from basstler_domain_model.github.exceptions import GitHubRequestFailed, NotAnIssueError
 from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
@@ -136,6 +139,40 @@ def test_a_refused_settings_change_is_reported_rather_than_raised():
 
     with ReplayedApi(answers) as api:
         assert client(api).turn_on_merged_branch_deletion() is False
+
+
+@pytest.mark.parametrize("status", [HTTPStatus.FORBIDDEN, HTTPStatus.NOT_FOUND])
+def test_a_settings_change_the_credential_may_not_make_is_not_made(
+    status: HTTPStatus,
+) -> None:
+    answers = {("PATCH", f"/{ROUTE.root}"): answer(status, {})}
+
+    with ReplayedApi(answers) as api:
+        assert client(api).turn_on_issues() is False
+
+
+def test_a_settings_change_github_fails_on_is_raised() -> None:
+    answers = {("PATCH", f"/{ROUTE.root}"): answer(HTTPStatus.BAD_GATEWAY, {})}
+
+    with ReplayedApi(answers) as api:
+        with pytest.raises(GitHubRequestFailed) as raised:
+            client(api).turn_on_issues()
+
+    assert raised.value.status == HTTPStatus.BAD_GATEWAY
+
+
+def test_actions_permissions_github_fails_to_answer_are_raised() -> None:
+    answers = {
+        ("GET", f"/{ROUTE.actions_permissions}"): answer(
+            HTTPStatus.INTERNAL_SERVER_ERROR, {}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        with pytest.raises(GitHubRequestFailed) as raised:
+            client(api).actions_enabled()
+
+    assert raised.value.status == HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 # %% issues and Actions
@@ -343,6 +380,51 @@ def test_an_issue_s_comments_are_read_with_their_authors():
 
 def test_a_closing_reference_is_the_keyword_before_the_issue_s_number():
     assert ClosingKeyword.FIXES.reference(3) == f"{ClosingKeyword.FIXES} #3"
+
+
+# %% against any REST API
+
+
+@dataclass
+class RestAnswersInMemory(RestApi):
+    """
+    Answers every call with one recorded answer, keeping each call made.
+    """
+
+    answer: RestAnswer
+    """
+    What every call is answered with.
+    """
+
+    calls: list[tuple[str, str, Any]] = field(default_factory=list)
+    """
+    The method, path and payload of every call, in order.
+    """
+
+    def attempt(
+        self, method: str, path: str, payload: Mapping[str, Any] | None = None
+    ) -> RestAnswer:
+        self.calls.append((method, path, payload))
+        return self.answer
+
+    def request(
+        self, method: str, path: str, payload: Mapping[str, Any] | None = None
+    ) -> Any:
+        return self.attempt(method, path, payload).raise_if_failed(method, path).body
+
+    def get(self, path: str) -> Any:
+        return self.request("GET", path)
+
+    def get_pages(self, path: str) -> list[Any]:
+        return [self.get(path)]
+
+
+def test_a_repository_writes_through_any_rest_api() -> None:
+    api = RestAnswersInMemory(RestAnswer(HTTPStatus.OK, "{}"))
+
+    GitHubRepository(REPOSITORY, api).set_base(4, "main")
+
+    assert api.calls == [("PATCH", ROUTE.pull_request(4), {RestJSONKey.BASE: "main"})]
 
 
 # %% review requests

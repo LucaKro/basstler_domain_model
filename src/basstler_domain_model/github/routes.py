@@ -249,8 +249,10 @@ class RepositoryRoute:
         """:return: The account the token belongs to."""
         return "user"
 
-    @staticmethod
-    def review_requests() -> str:
-        """:return: The search for open pull requests waiting on the caller's review."""
-        query = {QueryParameter.SEARCH: "is:open is:pr review-requested:@me"}
-        return f"search/issues?{urlencode(query)}"
+    def review_requests(self) -> str:
+        """
+        :return: The search for the repository's open pull requests waiting on the
+            caller's review.
+        """
+        terms = f"is:open is:pr review-requested:@me repo:{self.repository.full_name}"
+        return f"search/issues?{urlencode({QueryParameter.SEARCH: terms})}"

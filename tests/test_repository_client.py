@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from http import HTTPStatus
+from urllib.parse import parse_qs, urlsplit
 
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.issue_models import Issue
@@ -271,3 +272,9 @@ def test_the_pull_requests_awaiting_my_review_are_counted():
 
     with ReplayedApi(answers) as api:
         assert client(api).awaiting_my_review() == 2
+
+
+def test_only_the_repository_s_review_requests_are_searched():
+    query = parse_qs(urlsplit(ROUTE.review_requests()).query)
+
+    assert f"repo:{REPOSITORY.full_name}" in query[QueryParameter.SEARCH][0].split()

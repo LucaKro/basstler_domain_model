@@ -294,12 +294,15 @@ class IssueBoard(ABC):
 @dataclass(frozen=True)
 class ReviewRequests(ABC):
     """
-    The pull requests waiting on the credential's account.
+    The repository's pull requests waiting on the credential's account.
     """
 
     @abstractmethod
     def awaiting_my_review(self) -> int:
-        """:return: How many open pull requests ask the account for a review."""
+        """
+        :return: How many of the repository's open pull requests ask the account for a
+            review.
+        """
 
 
 class CommitChecks(ABC):

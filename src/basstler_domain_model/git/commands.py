@@ -291,6 +291,24 @@ class GitCommandRunner:
             None,
         )
 
+    def remote_default_branch(self, remote: str) -> str | None:
+        """
+        :param remote: A remote's name.
+        :return: The branch the remote's ``HEAD`` names, as the remote answers, or as
+            last fetched when it cannot be reached; ``None`` when neither knows.
+        """
+        branches = RemoteBranch(remote, "").reference
+        listed = self.attempt("ls-remote", "--symref", remote, "HEAD")
+        for line in listed.output.splitlines() if listed.succeeded else []:
+            target, _, name = line.partition("\t")
+            if name == "HEAD" and target.startswith(f"ref: {branches}"):
+                return target.removeprefix(f"ref: {branches}")
+        tracking = RemoteBranch(remote, "").tracking_reference
+        fetched = self.attempt("symbolic-ref", "--quiet", f"{tracking}HEAD")
+        if not fetched.succeeded:
+            return None
+        return fetched.output.removeprefix(tracking)
+
     def commit_or_none(self, reference: str) -> str | None:
         """:param reference: A ref that may not exist.
         :return: The commit it names, or ``None`` if it does not exist."""

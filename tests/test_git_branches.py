@@ -70,6 +70,37 @@ def test_a_remote_that_names_no_repository_has_none(checkout: GitCommandRunner):
 
 
 @pytest.fixture
+def cloned(checkout: GitCommandRunner, tmp_path: Path) -> GitCommandRunner:
+    """:return: A clone of a bare repository whose default branch is ``trunk``."""
+    remote = tmp_path / "trunk.git"
+    checkout.run("init", "--quiet", "--bare", "--initial-branch=trunk", str(remote))
+    checkout.run("push", "--quiet", str(remote), "HEAD:refs/heads/trunk")
+    return GitCommandRunner.clone(str(remote), tmp_path / "clone")
+
+
+def test_a_remote_s_default_branch_is_the_one_its_head_names(
+    cloned: GitCommandRunner,
+):
+    assert cloned.remote_default_branch(RemoteName.ORIGIN) == "trunk"
+
+
+def test_an_unreachable_remote_s_default_branch_is_the_one_last_fetched(
+    cloned: GitCommandRunner, tmp_path: Path
+):
+    cloned.run("remote", "set-url", RemoteName.ORIGIN, str(tmp_path / "gone.git"))
+
+    assert cloned.remote_default_branch(RemoteName.ORIGIN) == "trunk"
+
+
+def test_an_unreachable_remote_never_fetched_has_no_known_default_branch(
+    checkout: GitCommandRunner, tmp_path: Path
+):
+    checkout.run("remote", "add", RemoteName.ORIGIN, str(tmp_path / "gone.git"))
+
+    assert checkout.remote_default_branch(RemoteName.ORIGIN) is None
+
+
+@pytest.fixture
 def published(checkout: GitCommandRunner, tmp_path: Path) -> RemoteBranch:
     """:return: ``main``, pushed to a bare ``origin`` of the checkout."""
     remote = tmp_path / "remote.git"

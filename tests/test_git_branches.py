@@ -70,6 +70,37 @@ def test_a_remote_that_names_no_repository_has_none(checkout: GitCommandRunner):
 
 
 @pytest.fixture
+def cloned(checkout: GitCommandRunner, tmp_path: Path) -> GitCommandRunner:
+    """:return: A clone of a bare repository whose default branch is ``trunk``."""
+    remote = tmp_path / "trunk.git"
+    checkout.run("init", "--quiet", "--bare", "--initial-branch=trunk", str(remote))
+    checkout.run("push", "--quiet", str(remote), "HEAD:refs/heads/trunk")
+    return GitCommandRunner.clone(str(remote), tmp_path / "clone")
+
+
+def test_a_remote_s_default_branch_is_the_one_its_head_names(
+    cloned: GitCommandRunner,
+):
+    assert cloned.remote_default_branch(RemoteName.ORIGIN) == "trunk"
+
+
+def test_an_unreachable_remote_s_default_branch_is_the_one_last_fetched(
+    cloned: GitCommandRunner, tmp_path: Path
+):
+    cloned.run("remote", "set-url", RemoteName.ORIGIN, str(tmp_path / "gone.git"))
+
+    assert cloned.remote_default_branch(RemoteName.ORIGIN) == "trunk"
+
+
+def test_an_unreachable_remote_never_fetched_has_no_known_default_branch(
+    checkout: GitCommandRunner, tmp_path: Path
+):
+    checkout.run("remote", "add", RemoteName.ORIGIN, str(tmp_path / "gone.git"))
+
+    assert checkout.remote_default_branch(RemoteName.ORIGIN) is None
+
+
+@pytest.fixture
 def published(checkout: GitCommandRunner, tmp_path: Path) -> RemoteBranch:
     """:return: ``main``, pushed to a bare ``origin`` of the checkout."""
     remote = tmp_path / "remote.git"
@@ -148,11 +179,28 @@ def test_a_deleted_branch_is_gone_from_its_remote(
 def test_a_fetched_branch_moves_only_its_tracking_reference(
     checkout: GitCommandRunner, published: RemoteBranch
 ):
-    checkout.fetch_branch(published.remote, published.name, published.remote)
+    checkout.fetch_branch(published)
 
     assert checkout.commit_at(published.tracking_reference) == checkout.commit_at(
         "HEAD"
     )
+
+
+def test_a_branch_only_ending_in_another_s_reference_is_not_its_tip(
+    checkout: GitCommandRunner, published: RemoteBranch
+) -> None:
+    absent = RemoteBranch(published.remote, "absent")
+    checkout.run(
+        "push", "--quiet", published.remote, f"HEAD:refs/heads/a/{absent.reference}"
+    )
+
+    assert checkout.remote_branch_tip(absent) is None
+
+
+def test_a_git_result_keeps_the_command_as_invoked(
+    checkout: GitCommandRunner,
+) -> None:
+    assert checkout.attempt("version").arguments == ("git", "version")
 
 
 # %% committing without a checkout
@@ -176,6 +224,33 @@ def test_a_commit_on_a_parent_keeps_the_parent_s_files(checkout: GitCommandRunne
 
     assert checkout.run("show", f"{commit}:notes.md") == "a note"
     assert checkout.run("rev-parse", f"{commit}^") == parent
+
+
+# %% writing out a commit's files
+
+
+def test_a_commit_s_files_are_written_into_a_directory(
+    checkout: GitCommandRunner, tmp_path: Path
+):
+    start = checkout.commit_at("HEAD")
+    commit_on(checkout, "later", "main", "later.txt")
+    destination = tmp_path / "files"
+
+    checkout.export_files(start, destination)
+
+    assert sorted(path.name for path in destination.iterdir()) == ["README.md"]
+    assert (destination / "README.md").read_text() == "start\n"
+
+
+def test_writing_out_a_commit_s_files_leaves_the_checkout_untouched(
+    checkout: GitCommandRunner, tmp_path: Path
+):
+    (checkout.working_directory / "README.md").write_text("changed\n")
+    before = checkout.run("status", "--porcelain")
+
+    checkout.export_files("HEAD", tmp_path / "files")
+
+    assert checkout.run("status", "--porcelain") == before
 
 
 # %% restacking
@@ -367,6 +442,22 @@ def test_a_clone_s_origin_is_the_repository_cloned(hosted: Repository, tmp_path:
 
     [origin] = clone.remotes()
     assert (origin.name, origin.repository) == (RemoteName.ORIGIN, hosted)
+
+
+def test_a_relative_destination_is_cloned_where_it_names(
+    checkout: GitCommandRunner,
+    hosted: Repository,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+    monkeypatch.chdir(tmp_path)
+
+    GitCommandRunner.clone(url, Path("clones") / hosted.name)
+
+    assert GitCommandRunner(tmp_path / "clones" / hosted.name).commit_at(
+        "HEAD"
+    ) == checkout.commit_at("HEAD")
 
 
 def test_cloning_into_a_non_empty_directory_is_refused(

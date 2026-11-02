@@ -51,19 +51,14 @@ class GitCommandResult(CommandResult):
     One finished git command, whether or not it succeeded.
     """
 
-    arguments: tuple[str, ...]
-    """
-    The git subcommand and its arguments, as invoked, without ``git`` itself.
-    """
-
     @classmethod
     def of(cls, result: CommandResult) -> GitCommandResult:
         """
         :param result: A finished ``git`` command.
-        :return: It, its arguments without ``git`` itself.
+        :return: It, as a git command.
         """
         return cls(
-            result.arguments[1:],
+            result.arguments,
             result.exit_status,
             result.output,
             result.error_output,
@@ -200,9 +195,10 @@ class GitCommandRunner:
         :return: Runs git in the new checkout.
         :raises GitCommandFailed: If the repository cannot be cloned there.
         """
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        cls(destination.parent).run("clone", "--quiet", url, str(destination))
-        return cls(destination)
+        checkout = destination.absolute()
+        checkout.parent.mkdir(parents=True, exist_ok=True)
+        cls(checkout.parent).run("clone", "--quiet", url, str(checkout))
+        return cls(checkout)
 
     def attempt(
         self, *arguments: str, environment: Mapping[str, str] | None = None
@@ -255,24 +251,19 @@ class GitCommandRunner:
         """
         self.run("fetch", "--quiet", remote, *references)
 
-    def fetch_branch(
-        self, location: str, branch: str, tracking_remote: str
-    ) -> GitCommandResult:
+    def fetch_branch(self, branch: RemoteBranch) -> GitCommandResult:
         """
         Fetch one branch into its tracking ref, leaving ``FETCH_HEAD`` alone.
 
-        :param location: The remote name or URL to fetch from.
         :param branch: The branch to fetch.
-        :param tracking_remote: The remote whose tracking refs the branch is kept under.
         :return: The finished fetch, whose failure is an expected outcome.
         """
-        tracked = RemoteBranch(tracking_remote, branch)
         return self.attempt(
             "fetch",
             "--quiet",
             "--no-write-fetch-head",
-            location,
-            f"+{tracked.reference}:{tracked.tracking_reference}",
+            branch.remote,
+            f"+{branch.reference}:{branch.tracking_reference}",
         )
 
     def has_remote_branch(self, branch: RemoteBranch) -> bool:
@@ -291,7 +282,32 @@ class GitCommandRunner:
         :raises GitCommandFailed: If the remote cannot be reached.
         """
         listed = self.run("ls-remote", branch.remote, branch.reference)
-        return listed.split()[0] if listed else None
+        return next(
+            (
+                commit
+                for commit, reference in (line.split() for line in listed.splitlines())
+                if reference == branch.reference
+            ),
+            None,
+        )
+
+    def remote_default_branch(self, remote: str) -> str | None:
+        """
+        :param remote: A remote's name.
+        :return: The branch the remote's ``HEAD`` names, as the remote answers, or as
+            last fetched when it cannot be reached; ``None`` when neither knows.
+        """
+        branches = RemoteBranch(remote, "").reference
+        listed = self.attempt("ls-remote", "--symref", remote, "HEAD")
+        for line in listed.output.splitlines() if listed.succeeded else []:
+            target, _, name = line.partition("\t")
+            if name == "HEAD" and target.startswith(f"ref: {branches}"):
+                return target.removeprefix(f"ref: {branches}")
+        tracking = RemoteBranch(remote, "").tracking_reference
+        fetched = self.attempt("symbolic-ref", "--quiet", f"{tracking}HEAD")
+        if not fetched.succeeded:
+            return None
+        return fetched.output.removeprefix(tracking)
 
     def commit_or_none(self, reference: str) -> str | None:
         """:param reference: A ref that may not exist.
@@ -533,6 +549,25 @@ class GitCommandRunner:
             tree = self.run("write-tree", environment=index)
         parents = () if parent is None else ("-p", parent)
         return self.run("commit-tree", tree, *parents, "-m", message)
+
+    def export_files(self, commit: str, destination: Path) -> None:
+        """
+        Write the files a commit records into a directory, leaving the checkout, its
+        index and ``HEAD`` alone.
+
+        :param commit: Any reference git can resolve to a commit.
+        :param destination: The directory, created when absent.
+        """
+        destination.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as directory:
+            index = {GitVariable.INDEX_FILE: str(Path(directory) / "index")}
+            self.run("read-tree", commit, environment=index)
+            self.run(
+                "checkout-index",
+                "--all",
+                f"--prefix={destination.resolve()}/",
+                environment=index,
+            )
 
     def rebase_stack(self, onto: str, top: str) -> GitCommandResult:
         """

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass
+from enum import StrEnum
+
 from basstler_domain_model.exceptions import DataclassException, ExternalCallFailed
 from basstler_domain_model.repository import Repository
 
@@ -71,6 +73,33 @@ class UpstreamPullRequestNotFound(PullRequestReadError):
             "The branch has most likely not been promoted upstream yet; read it once "
             "its upstream pull request is open"
         )
+
+
+# %% reading GitHub's fixed values
+
+
+@dataclass
+class UnrecognisedGitHubValueError(DataclassException, ValueError):
+    """
+    Raised when GitHub reports a value its vocabulary here does not know, such as one
+    GitHub added later.
+    """
+
+    vocabulary: type[StrEnum]
+    """
+    The set of values it was read as.
+    """
+
+    value: str
+    """
+    The value GitHub reported.
+    """
+
+    def error_message(self) -> str:
+        return f"GitHub reported {self.value!r}, which {self.vocabulary.__name__} does not know"
+
+    def suggest_correction(self) -> str:
+        return f"Add {self.value!r} to {self.vocabulary.__name__}, with what it means."
 
 
 # %% calling the REST API with a token

@@ -97,7 +97,7 @@ class PullRequestSource(ABC):
         candidates = [
             pull_request
             for pull_request in pull_requests
-            if pull_request.head_owner.login == self.fork_owner
+            if pull_request.head_owner.has_login(self.fork_owner)
         ]
         if not candidates:
             raise UpstreamPullRequestNotFound(

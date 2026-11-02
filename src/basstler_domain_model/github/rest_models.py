@@ -173,14 +173,16 @@ class RestPullRequest(JSONModel):
             title=data[RestJSONKey.TITLE],
             body=data.get(RestJSONKey.BODY),
             url=data[RestJSONKey.HTML_URL],
-            state=PullRequestState(data[RestJSONKey.STATE]),
+            state=PullRequestState.from_value(data[RestJSONKey.STATE]),
             merged=data.get(RestJSONKey.MERGED_AT) is not None,
             draft=data[RestJSONKey.DRAFT],
             head=PullRequestHead.from_json(head),
             base=data[RestJSONKey.BASE][RestJSONKey.REFERENCE],
             labels=tuple(label[RestJSONKey.NAME] for label in data[RestJSONKey.LABELS]),
             mergeable_state=(
-                None if mergeable_state is None else MergeableState(mergeable_state)
+                None
+                if mergeable_state is None
+                else MergeableState.from_value(mergeable_state)
             ),
         )
 

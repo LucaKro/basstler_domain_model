@@ -137,3 +137,10 @@ class DatasetLocation(PathEnumeration):
     """
     The same pull request, its head missing the commit it is at.
     """
+
+    CHECK_RUN_UNRECOGNISED_CONCLUSION = (
+        DIRECTORY / "checks" / "check-run-unrecognised-conclusion.json"
+    )
+    """
+    A rollup's check run, concluded in a way this package does not know.
+    """

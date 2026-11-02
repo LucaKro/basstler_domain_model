@@ -49,6 +49,8 @@ def test_repository_rejects_a_reference_that_is_not_owner_and_name(malformed: st
         f"{GitHubAddress.WEB}/{REPOSITORY.full_name}",
         f"git@{GITHUB_HOST}:{REPOSITORY.full_name}.git",
         f"http://127.0.0.1:41729/git/{REPOSITORY.full_name}",
+        f"ssh://git@{GITHUB_HOST}/{REPOSITORY.full_name}.git",
+        f"file:///srv/repositories/{REPOSITORY.full_name}.git",
     ],
 )
 def test_repository_reads_the_owner_and_name_from_a_remote_url(url: str):
@@ -65,6 +67,23 @@ def test_repository_reads_the_owner_and_name_from_a_remote_url(url: str):
 def test_repository_rejects_a_remote_url_naming_no_repository(malformed: str):
     with pytest.raises(MalformedRepositoryError):
         Repository.from_remote_url(malformed)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"https://gitlab.com/{REPOSITORY.full_name}.git",
+        f"git@evil.example:{REPOSITORY.full_name}.git",
+        f"https://example.com/mirror/{REPOSITORY.full_name}.git",
+        f"http://127.0.0.1:41729/{REPOSITORY.full_name}",
+    ],
+)
+def test_a_remote_url_off_github_names_no_repository(url: str):
+    """
+    Only GitHub, the local proxy a cloud session reaches it through, and a local
+    directory standing in for it hold GitHub repositories.
+    """
+    assert not Repository.names_a_repository(url)
 
 
 # %% pages

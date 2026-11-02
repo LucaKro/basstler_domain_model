@@ -1,13 +1,16 @@
 """
-Tests for :class:`basstler_domain_model.github.labels.GitHubLabel`: a caller's own set
-of labels extends it.
+Tests for :class:`basstler_domain_model.github.labels.GitHubLabel`, which a caller's own
+set of labels extends, and for :class:`basstler_domain_model.github.labels.LabelWrite`.
 """
 
 from __future__ import annotations
 
 from enum import ReprEnum
 
-from basstler_domain_model.github.labels import GitHubLabel
+import pytest
+
+from basstler_domain_model.github.exceptions import ContradictoryLabelWriteError
+from basstler_domain_model.github.labels import GitHubLabel, LabelWrite
 
 # %% an enumeration of labels
 
@@ -40,3 +43,39 @@ def test_an_enumerated_label_is_its_own_name():
 
 def test_an_enumerated_label_is_a_label():
     assert isinstance(EnumeratedLabel.READY, GitHubLabel)
+
+
+# %% the label set a write leaves behind
+
+
+def test_a_label_added_twice_is_written_once() -> None:
+    assert LabelWrite.replacing(["kept"], added=["new", "new"]).labels == (
+        "kept",
+        "new",
+    )
+
+
+def test_a_label_carried_in_another_case_is_not_added_again() -> None:
+    assert LabelWrite.replacing(["Ready"], added=["ready"]).labels == ("Ready",)
+
+
+def test_a_label_is_removed_whatever_its_case() -> None:
+    assert LabelWrite.replacing(["Ready", "kept"], removed=["ready"]).labels == (
+        "kept",
+    )
+
+
+def test_a_label_both_added_and_removed_in_different_cases_is_refused() -> None:
+    with pytest.raises(ContradictoryLabelWriteError):
+        LabelWrite.replacing([], added=["Ready"], removed=["ready"])
+
+
+def test_labels_are_kept_in_the_order_carried_then_added() -> None:
+    assert LabelWrite.replacing(
+        ["b", "a", "gone"], added=["d", "c"], removed=["gone"]
+    ).labels == (
+        "b",
+        "a",
+        "d",
+        "c",
+    )

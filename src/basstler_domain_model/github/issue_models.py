@@ -1,5 +1,5 @@
 """
-Issues as the REST API lists them.
+Issues and their comments as the REST API lists them.
 """
 
 from __future__ import annotations
@@ -55,3 +55,27 @@ class Issue(JSONModel):
             issues.
         """
         return RestJSONKey.PULL_REQUEST in data
+
+
+# %% one comment
+
+
+@dataclass(frozen=True)
+class IssueComment(JSONModel):
+    """
+    One comment on an issue: who wrote it, and what it says.
+    """
+
+    author: str
+    """
+    The login of the account that wrote it.
+    """
+
+    body: str
+    """
+    Its text, as Markdown.
+    """
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> IssueComment:
+        return cls(data[RestJSONKey.USER][RestJSONKey.LOGIN], data[RestJSONKey.BODY])

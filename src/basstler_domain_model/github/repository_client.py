@@ -16,7 +16,7 @@ from typing import Any
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.exceptions import NotAnIssueError
-from basstler_domain_model.github.issue_models import Issue
+from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.pull_request_fields import PullRequestPayload
 from basstler_domain_model.github.routes import (
@@ -311,6 +311,13 @@ class IssueBoard(ABC):
         """
 
     @abstractmethod
+    def comments(self, number: int) -> list[IssueComment]:
+        """
+        :param number: The issue or pull request to read.
+        :return: Its comments, oldest first.
+        """
+
+    @abstractmethod
     def close_issue(self, number: int, reason: IssueStateReason) -> None:
         """
         :param number: The issue to close.
@@ -537,6 +544,14 @@ class GitHubRepository(
             "POST", self.route.issue_comments(number), {RestJSONKey.BODY: body}
         )
         return str(created[RestJSONKey.HTML_URL])
+
+    def comments(self, number: int) -> list[IssueComment]:
+        return [
+            IssueComment.from_json(entry)
+            for entry in self._every_entry(
+                self.route.listing(self.route.issue_comments(number))
+            )
+        ]
 
     def set_description(self, number: int, body: str) -> None:
         """

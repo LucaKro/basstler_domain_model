@@ -52,6 +52,14 @@ class Author(JSONModel):
             return cls(cls.unknown_login)
         return cls(data[PullRequestJSONKey.LOGIN])
 
+    def has_login(self, login: str) -> bool:
+        """
+        :param login: A GitHub login, in any case.
+        :return: Whether it is this author's login, which GitHub matches regardless of
+            case.
+        """
+        return self.login.casefold() == login.casefold()
+
 
 @dataclass(frozen=True)
 class ThreadComment(JSONModel):
@@ -208,7 +216,7 @@ class Review(JSONModel):
         """
         return cls(
             author=Author.from_json(data[PullRequestJSONKey.AUTHOR]),
-            state=ReviewState[data[PullRequestJSONKey.STATE]],
+            state=ReviewState.from_name(data[PullRequestJSONKey.STATE]),
             body=data[PullRequestJSONKey.BODY],
             submitted_at=data[PullRequestJSONKey.SUBMITTED_AT],
         )
@@ -245,7 +253,7 @@ class BranchPullRequest(JSONModel):
         """
         return cls(
             number=data[PullRequestJSONKey.NUMBER],
-            state=PullRequestState[data[PullRequestJSONKey.STATE]],
+            state=PullRequestState.from_name(data[PullRequestJSONKey.STATE]),
             head_owner=Author.from_json(data[PullRequestJSONKey.HEAD_REPOSITORY_OWNER]),
         )
 

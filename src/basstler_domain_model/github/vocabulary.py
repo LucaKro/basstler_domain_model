@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from enum import StrEnum
-from typing import Any, TypeVar
+from typing import Any, Self, TypeVar
 
+from basstler_domain_model.github.exceptions import UnrecognisedGitHubValueError
 from basstler_domain_model.locations import PackageLocation
 
 # %% the reading contract
@@ -142,7 +143,35 @@ class GraphQLDocument(StrEnum):
         return (PackageLocation.QUERIES / f"{self}.graphql").read_text()
 
 
-class ReviewState(StrEnum):
+class GitHubVocabulary(StrEnum):
+    """
+    A fixed set of values GitHub reports, read by member name or by value.
+    """
+
+    @classmethod
+    def from_name(cls, name: str) -> Self:
+        """
+        :param name: A value as GitHub spells it, which names a member.
+        :return: The member it names.
+        :raises UnrecognisedGitHubValueError: If no member has that name.
+        """
+        if name not in cls.__members__:
+            raise UnrecognisedGitHubValueError(cls, name)
+        return cls[name]
+
+    @classmethod
+    def from_value(cls, value: str) -> Self:
+        """
+        :param value: A value as GitHub spells it, which is a member's value.
+        :return: The member with that value.
+        :raises UnrecognisedGitHubValueError: If no member has that value.
+        """
+        if value not in cls:
+            raise UnrecognisedGitHubValueError(cls, value)
+        return cls(value)
+
+
+class ReviewState(GitHubVocabulary):
     """
     The verdict a reviewer submitted with a review.
 
@@ -176,7 +205,7 @@ class ReviewState(StrEnum):
     """
 
 
-class PullRequestState(StrEnum):
+class PullRequestState(GitHubVocabulary):
     """
     Where a pull request stands in its lifecycle.
 
@@ -201,7 +230,7 @@ class PullRequestState(StrEnum):
     """
 
 
-class CheckContextType(StrEnum):
+class CheckContextType(GitHubVocabulary):
     """
     The two shapes GitHub returns inside a status check rollup.
 
@@ -221,7 +250,7 @@ class CheckContextType(StrEnum):
     """
 
 
-class CheckOutcome(StrEnum):
+class CheckOutcome(GitHubVocabulary):
     """
     Where one check stands, over both shapes a rollup can hold.
 
@@ -305,7 +334,7 @@ class CheckOutcome(StrEnum):
         return RollupState.FAILURE
 
 
-class RollupState(StrEnum):
+class RollupState(GitHubVocabulary):
     """
     The verdict GitHub itself computes over all of a pull request's checks, or that
     nothing has reported one yet.
@@ -457,6 +486,25 @@ class IssueState(StrEnum):
     """
 
 
+class ClosingKeyword(StrEnum):
+    """
+    A word that, written before an issue's number in a pull request's description,
+    closes the issue when the pull request is merged.
+    """
+
+    FIXES = "Fixes"
+    """
+    Closes an issue that reports a bug.
+    """
+
+    def reference(self, number: int) -> str:
+        """
+        :param number: An issue.
+        :return: The keyword and the issue, as a description writes them.
+        """
+        return f"{self} #{number}"
+
+
 class IssueStateReason(StrEnum):
     """
     Why an issue was closed or reopened.
@@ -491,12 +539,11 @@ class WorkflowRunStatus(StrEnum):
 # %% pull request mergeability
 
 
-class MergeableState(StrEnum):
+class MergeableState(GitHubVocabulary):
     """
     The values GitHub reports as a pull request's ``mergeable_state``.
 
-    Only :attr:`DIRTY` means a branch genuinely conflicts with its base; every other one
-    means there are no conflicts, whatever else may be true of it.
+    Whether a branch conflicts with its base is read from :attr:`conflicts`.
     """
 
     DIRTY = "dirty"
@@ -538,6 +585,17 @@ class MergeableState(StrEnum):
     """
     Not yet computed by GitHub.
     """
+
+    @property
+    def conflicts(self) -> bool | None:
+        """
+        :return: Whether the branch conflicts with its base, ``None`` when this state
+            does not say: GitHub has not computed it yet, or reports a draft as a draft
+            whether or not it conflicts.
+        """
+        if self in {MergeableState.UNKNOWN, MergeableState.DRAFT}:
+            return None
+        return self is MergeableState.DIRTY
 
 
 # %% clients

@@ -57,23 +57,26 @@ class CheckResult(JSONModel):
 
         :param data: The node to read.
         :return: The parsed check.
-        :raises ValueError: If the node is neither shape a rollup can hold.
+        :raises UnrecognisedGitHubValueError: If the node is neither shape a rollup can
+            hold, or its outcome is one GitHub added later.
         """
         if (
-            CheckContextType(data[PullRequestJSONKey.TYPE_NAME])
+            CheckContextType.from_value(data[PullRequestJSONKey.TYPE_NAME])
             is CheckContextType.CHECK_RUN
         ):
             conclusion = data[PullRequestJSONKey.CONCLUSION]
             return cls(
                 name=data[PullRequestJSONKey.NAME],
                 outcome=(
-                    CheckOutcome[conclusion] if conclusion else CheckOutcome.PENDING
+                    CheckOutcome.from_name(conclusion)
+                    if conclusion
+                    else CheckOutcome.PENDING
                 ),
                 url=data[PullRequestJSONKey.DETAILS_URL] or "",
             )
         return cls(
             name=data[PullRequestJSONKey.CONTEXT],
-            outcome=CheckOutcome[data[PullRequestJSONKey.STATE]],
+            outcome=CheckOutcome.from_name(data[PullRequestJSONKey.STATE]),
             url=data[PullRequestJSONKey.TARGET_URL] or "",
         )
 
@@ -108,7 +111,7 @@ class CheckStatus(JSONModel):
         :return: The parsed status.
         """
         return cls(
-            state=RollupState[data[PullRequestJSONKey.STATE]],
+            state=RollupState.from_name(data[PullRequestJSONKey.STATE]),
             results=PullRequestJSONKey.CONTEXTS.read_list(data, CheckResult),
         )
 
@@ -383,7 +386,7 @@ class GraphQLResponse:
 
     data: dict[str, Any] | None
     """
-    The ``data`` data, absent when the query failed outright.
+    The response's ``data`` member, absent when the query failed outright.
     """
 
     errors: list[str] = field(default_factory=list)

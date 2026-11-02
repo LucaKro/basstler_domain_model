@@ -107,3 +107,10 @@ class DatasetLocation(PathEnumeration):
     """
     A ``gh`` that only answers ``gh auth token``, with ``STUB_TOKEN``.
     """
+
+    CHECK_RUN_UNRECOGNISED_CONCLUSION = (
+        DIRECTORY / "checks" / "check-run-unrecognised-conclusion.json"
+    )
+    """
+    A rollup's check run, concluded in a way this package does not know.
+    """

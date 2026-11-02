@@ -190,6 +190,20 @@ class GitCommandRunner:
     The checkout every command runs in.
     """
 
+    @classmethod
+    def clone(cls, url: str, destination: Path) -> GitCommandRunner:
+        """
+        Clone a repository into a new checkout.
+
+        :param url: The repository to clone, as git fetches it.
+        :param destination: The new checkout's directory, absent or empty.
+        :return: Runs git in the new checkout.
+        :raises GitCommandFailed: If the repository cannot be cloned there.
+        """
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        cls(destination.parent).run("clone", "--quiet", url, str(destination))
+        return cls(destination)
+
     def attempt(
         self, *arguments: str, environment: Mapping[str, str] | None = None
     ) -> GitCommandResult:
@@ -370,8 +384,8 @@ class GitCommandRunner:
         Commit the current content of some paths.
 
         :param message: The commit message.
-        :param paths: The files to commit, as they are in the working tree; one no
-            longer there is committed as removed.
+        :param paths: The files and directories to commit, as they are in the working
+            tree; one no longer there is committed as removed.
         :return: The new commit.
         :raises GitCommandFailed: If nothing changed.
         """
@@ -382,7 +396,9 @@ class GitCommandRunner:
         if present:
             self.run("add", "--", *present)
         if removed:
-            self.run("rm", "--quiet", "--cached", "--ignore-unmatch", "--", *removed)
+            self.run(
+                "rm", "-r", "--quiet", "--cached", "--ignore-unmatch", "--", *removed
+            )
         self.run("commit", "--quiet", "--message", message)
         return self.commit_at("HEAD")
 

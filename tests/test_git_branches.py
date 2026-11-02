@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from basstler_domain_model.environment import GitIdentityVariable
 from basstler_domain_model.git.exceptions import GitCommandFailed
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
@@ -16,6 +17,7 @@ from basstler_domain_model.git.commands import (
     RemoteBranch,
     RemoteName,
 )
+from basstler_domain_model.repository import Repository
 
 # %% fixtures
 
@@ -301,6 +303,85 @@ def test_a_commit_of_a_removed_path_removes_it(
     commit = checkout.commit("Remove the readme", [Path("README.md")])
 
     assert checkout.run("ls-tree", "--name-only", commit) == ""
+
+
+def test_a_commit_of_a_removed_directory_removes_its_files(
+    checkout: GitCommandRunner,
+):
+    directory = checkout.working_directory / "plugin"
+    directory.mkdir()
+    (directory / "first.txt").write_text("first\n")
+    (directory / "second.txt").write_text("second\n")
+    checkout.commit("Add the plugin", [Path("plugin")])
+    for file in directory.iterdir():
+        file.unlink()
+    directory.rmdir()
+
+    commit = checkout.commit("Remove the plugin", [Path("plugin")])
+
+    assert checkout.run("ls-tree", "--name-only", commit) == "README.md"
+
+
+# %% identity
+
+
+def test_the_identity_variables_take_precedence_over_the_configuration(
+    checkout: GitCommandRunner, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(GitIdentityVariable.AUTHOR_NAME, "Environment Author")
+    monkeypatch.setenv(GitIdentityVariable.AUTHOR_EMAIL, "environment@example.com")
+
+    author = checkout.run("var", "GIT_AUTHOR_IDENT")
+
+    assert author.startswith("Environment Author <environment@example.com>")
+
+
+# %% cloning
+
+
+@pytest.fixture
+def hosted(checkout: GitCommandRunner, tmp_path: Path) -> Repository:
+    """:return: A repository whose ``main`` is the checkout's, kept as a bare
+    repository under ``hosting`` the way GitHub keeps it."""
+    repository = Repository("an-owner", "a-repository")
+    bare = tmp_path / "hosting" / repository.owner / f"{repository.name}.git"
+    checkout.run("init", "--quiet", "--bare", "--initial-branch=main", str(bare))
+    checkout.run("push", "--quiet", str(bare), "HEAD:refs/heads/main")
+    return repository
+
+
+def test_a_clone_holds_the_repository_s_commits(
+    checkout: GitCommandRunner, hosted: Repository, tmp_path: Path
+):
+    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+
+    clone = GitCommandRunner.clone(url, tmp_path / "clones" / hosted.name)
+
+    assert clone.commit_at("HEAD") == checkout.commit_at("HEAD")
+
+
+def test_a_clone_s_origin_is_the_repository_cloned(hosted: Repository, tmp_path: Path):
+    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+
+    clone = GitCommandRunner.clone(url, tmp_path / "clones" / hosted.name)
+
+    [origin] = clone.remotes()
+    assert (origin.name, origin.repository) == (RemoteName.ORIGIN, hosted)
+
+
+def test_cloning_into_a_non_empty_directory_is_refused(
+    hosted: Repository, tmp_path: Path
+):
+    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+    occupied = tmp_path / "occupied"
+    occupied.mkdir()
+    (occupied / "file.txt").write_text("in the way\n")
+
+    with pytest.raises(GitCommandFailed):
+        GitCommandRunner.clone(url, occupied)
+
+
+# %% remote branch tips
 
 
 def test_a_remote_branch_s_tip_is_the_commit_pushed(

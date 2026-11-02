@@ -134,3 +134,30 @@ class GitVariable(EnvironmentVariable):
     """
     The index git builds a tree in, set to keep the checkout's own index untouched.
     """
+
+
+class GitIdentityVariable(EnvironmentVariable):
+    """
+    The variables git takes a commit's author and committer from, ahead of its
+    configured ``user.name`` and ``user.email``.
+    """
+
+    AUTHOR_NAME = "GIT_AUTHOR_NAME"
+    """
+    The name a commit is authored under.
+    """
+
+    AUTHOR_EMAIL = "GIT_AUTHOR_EMAIL"
+    """
+    The address a commit is authored under.
+    """
+
+    COMMITTER_NAME = "GIT_COMMITTER_NAME"
+    """
+    The name a commit is committed under.
+    """
+
+    COMMITTER_EMAIL = "GIT_COMMITTER_EMAIL"
+    """
+    The address a commit is committed under.
+    """

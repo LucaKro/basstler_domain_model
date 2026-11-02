@@ -9,7 +9,10 @@ import json
 from http import HTTPStatus
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
+
 from basstler_domain_model.github.clients import GitHubApi
+from basstler_domain_model.github.exceptions import NotAnIssueError
 from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
@@ -229,6 +232,53 @@ def test_listed_issues_leave_the_pull_requests_out():
         issues = client(api).issues(["finding"], IssueState.OPEN)
 
     assert issues == [Issue(1, "Issue 1", ("finding",), IssueState.OPEN)]
+
+
+def test_one_issue_is_read_with_its_labels():
+    answers = {
+        ("GET", f"/{ROUTE.issue(4)}"): answer(
+            HTTPStatus.OK, issue_entry(4, ["finding", "urgent"])
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        issue = client(api).issue(4)
+
+    assert issue == Issue(4, "Issue 4", ("finding", "urgent"), IssueState.OPEN)
+
+
+def test_reading_a_pull_request_as_an_issue_is_refused():
+    pull_request = {**issue_entry(5, []), RestJSONKey.PULL_REQUEST: {}}
+    answers = {("GET", f"/{ROUTE.issue(5)}"): answer(HTTPStatus.OK, pull_request)}
+
+    with ReplayedApi(answers) as api, pytest.raises(NotAnIssueError):
+        client(api).issue(5)
+
+
+def test_added_labels_are_sent_alone():
+    answers = {("POST", f"/{ROUTE.issue_labels(6)}"): answer(HTTPStatus.OK, {})}
+
+    with ReplayedApi(answers) as api:
+        client(api).add_labels(6, ["finding", "urgent"])
+
+    assert api.sent[0].payload == {RestJSONKey.LABELS: ["finding", "urgent"]}
+
+
+def test_a_removed_label_is_named_in_the_path():
+    answers = {
+        ("DELETE", f"/{ROUTE.issue_label(7, 'priority: low')}"): answer(
+            HTTPStatus.OK, {}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        client(api).remove_label(7, "priority: low")
+
+    assert [request.method for request in api.sent] == ["DELETE"]
+
+
+def test_a_slash_in_an_issue_label_stays_within_its_path_segment():
+    assert ROUTE.issue_label(8, "type/bug") == f"{ROUTE.issue_labels(8)}/type%2Fbug"
 
 
 def test_an_issue_is_closed_with_its_reason():

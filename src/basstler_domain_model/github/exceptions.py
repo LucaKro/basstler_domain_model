@@ -162,6 +162,27 @@ class MissingPullRequestFieldError(DataclassException, ValueError):
         return ""
 
 
+# %% reading an issue
+
+
+@dataclass
+class NotAnIssueError(DataclassException, ValueError):
+    """
+    Raised when the number read as an issue belongs to a pull request.
+    """
+
+    number: int
+    """
+    The pull request's number.
+    """
+
+    def error_message(self) -> str:
+        return f"#{self.number} is a pull request, not an issue"
+
+    def suggest_correction(self) -> str:
+        return "Name the number of an issue."
+
+
 # %% writing labels
 
 

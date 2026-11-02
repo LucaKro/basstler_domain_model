@@ -15,6 +15,7 @@ from typing import Any
 
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.commit_checks import CommitCheckReader
+from basstler_domain_model.github.exceptions import NotAnIssueError
 from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.pull_request_fields import PullRequestPayload
@@ -269,10 +270,36 @@ class IssueBoard(ABC):
         """
 
     @abstractmethod
+    def issue(self, number: int) -> Issue:
+        """
+        :param number: The issue to read.
+        :return: That issue.
+        :raises NotAnIssueError: If the number belongs to a pull request.
+        """
+
+    @abstractmethod
     def replace_labels(self, number: int, labels: Sequence[str]) -> None:
         """
         :param number: The issue or pull request to write.
         :param labels: The complete label set it must end up with.
+        """
+
+    @abstractmethod
+    def add_labels(self, number: int, labels: Sequence[str]) -> None:
+        """
+        Add labels, leaving every label the issue already carries in place.
+
+        :param number: The issue or pull request to write.
+        :param labels: The labels it must carry afterwards.
+        """
+
+    @abstractmethod
+    def remove_label(self, number: int, label: str) -> None:
+        """
+        Remove one label, leaving every other label in place.
+
+        :param number: The issue or pull request to write.
+        :param label: A label it carries.
         """
 
     @abstractmethod
@@ -431,10 +458,11 @@ class GitHubRepository(
         """:return: Every pull request on the repository, open or closed."""
         return self._pull_requests_in_state(PullRequestListState.ALL)
 
-    def issue(self, number: int) -> dict[str, Any]:
-        """:param number: The issue or pull request to read.
-        :return: It, as the issues API describes it."""
-        return self.api.get(self.route.issue(number))
+    def issue(self, number: int) -> Issue:
+        entry = self.api.get(self.route.issue(number))
+        if Issue.is_pull_request(entry):
+            raise NotAnIssueError(number)
+        return Issue.from_json(entry)
 
     def _pull_requests_in_state(
         self, state: PullRequestListState
@@ -492,6 +520,14 @@ class GitHubRepository(
         self.api.request(
             "PUT", self.route.issue_labels(number), {RestJSONKey.LABELS: list(labels)}
         )
+
+    def add_labels(self, number: int, labels: Sequence[str]) -> None:
+        self.api.request(
+            "POST", self.route.issue_labels(number), {RestJSONKey.LABELS: list(labels)}
+        )
+
+    def remove_label(self, number: int, label: str) -> None:
+        self.api.request("DELETE", self.route.issue_label(number, label))
 
     def add_comment(self, number: int, body: str) -> str:
         """:param number: The pull request to comment on.

@@ -195,6 +195,14 @@ class RepositoryRoute:
         :return: The labels it carries."""
         return f"{self.issue(number)}/labels"
 
+    def issue_label(self, number: int, name: str) -> str:
+        """
+        :param number: The issue or pull request.
+        :param name: One label it carries.
+        :return: That label on it.
+        """
+        return f"{self.issue_labels(number)}/{quote(name, safe='')}"
+
     @property
     def labels(self) -> str:
         """:return: The repository's labels."""

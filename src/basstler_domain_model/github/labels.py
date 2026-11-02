@@ -17,6 +17,9 @@ class GitHubLabel(str):
     A label as GitHub stores it: the label is its own name, and carries what it means.
 
     The base a caller's own set of labels extends, an enumeration of them included.
+
+    .. warning:: A label has a :attr:`description` only once a subclass gives it one,
+        on the class or on each member; this base declares it without a value.
     """
 
     description: str

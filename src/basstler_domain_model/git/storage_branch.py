@@ -50,9 +50,7 @@ class StorageBranch:
             self.git.attempt("update-ref", "-d", self.branch.tracking_reference)
             return False
         if self.git.commit_or_none(self.branch.tracking_reference) != tip:
-            self.git.fetch_branch(
-                self.branch.remote, self.branch.name, self.branch.remote
-            ).raise_if_failed()
+            self.git.fetch_branch(self.branch).raise_if_failed()
         return True
 
     def read(self, path: Path) -> str | None:

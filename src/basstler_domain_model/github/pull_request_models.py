@@ -386,7 +386,7 @@ class GraphQLResponse:
 
     data: dict[str, Any] | None
     """
-    The ``data`` data, absent when the query failed outright.
+    The response's ``data`` member, absent when the query failed outright.
     """
 
     errors: list[str] = field(default_factory=list)

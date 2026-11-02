@@ -1,6 +1,6 @@
 """
-Krrood's ``DataclassException``, copied rather than imported, and the errors raised
-across this package's subpackages.
+The base every error of this package extends, and the errors raised across its
+subpackages.
 """
 
 from __future__ import annotations
@@ -22,9 +22,14 @@ class DataclassException(Exception, ABC):
     at the end.
     """
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """
+        Refuse an abstract subclass, and compose the message the exception carries.
+
+        :raises TypeError: If the subclass leaves an abstract method unimplemented.
+        """
         # BaseException.__new__ bypasses the usual ABC instantiation check, so enforce it here.
-        if getattr(type(self), "__abstractmethods__", None):
+        if type(self).__abstractmethods__:
             raise TypeError(
                 f"Can't instantiate abstract class {type(self).__name__} without an implementation of "
                 f"{', '.join(sorted(type(self).__abstractmethods__))}."

@@ -11,15 +11,8 @@ class classproperty:
     """
     Reads a value off the class itself, and stays abstract until one is supplied.
 
-    ``property`` answers only on instances, and chaining ``classmethod`` with it was
-    removed in Python 3.13, so a value that belongs to the class rather than to any
-    instance needs a descriptor of its own. Written in this repository rather than taken
-    from ``krrood`` because this package's first version is deliberately independent of
-    it, which is the boundary decision 12 records for this tooling.
-
-    An abstract accessor answers with the descriptor instead of calling it, which is what
-    lets :class:`abc.ABCMeta` still see it as abstract on a subclass that supplied
-    nothing - the refusal then lands where every other missing abstract member's does.
+    An abstract accessor answers with the descriptor instead of calling it, so
+    :class:`abc.ABCMeta` still sees it as abstract on a subclass that supplied nothing.
     """
 
     def __init__(self, accessor: Callable[[type], Any]) -> None:

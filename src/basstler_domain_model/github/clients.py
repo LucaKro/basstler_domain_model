@@ -46,7 +46,7 @@ class JobLogReader(ABC):
 
 class GraphQLClient(ABC):
     """
-    Sends a GraphQL document to GitHub and returns its ``data`` data.
+    Sends a GraphQL document to GitHub and returns its ``data`` member.
     """
 
     @abstractmethod
@@ -56,7 +56,7 @@ class GraphQLClient(ABC):
 
         :param query: The GraphQL document.
         :param variables: The document's variables.
-        :return: The response's ``data`` data.
+        :return: The response's ``data`` member.
         """
 
 
@@ -126,7 +126,7 @@ class RestAnswer:
     @property
     def succeeded(self) -> bool:
         """:return: Whether the status is a 2xx one."""
-        return 200 <= self.status < 300
+        return HTTPStatus.OK <= self.status < HTTPStatus.MULTIPLE_CHOICES
 
     @property
     def body(self) -> Any:

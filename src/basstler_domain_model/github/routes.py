@@ -45,6 +45,11 @@ class QueryParameter(StrEnum):
     The branch listed workflow runs were triggered on.
     """
 
+    LABELS = "labels"
+    """
+    The labels a listed issue must all carry, comma-separated.
+    """
+
     SEARCH = "q"
     """
     The search query.

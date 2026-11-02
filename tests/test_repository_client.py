@@ -9,10 +9,16 @@ import json
 from http import HTTPStatus
 
 from basstler_domain_model.github.clients import GitHubApi
+from basstler_domain_model.github.issue_models import Issue
+from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import GitHubRepository
-from basstler_domain_model.github.routes import RepositoryRoute
-from basstler_domain_model.github.vocabulary import RestJSONKey
+from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
+from basstler_domain_model.github.vocabulary import (
+    IssueState,
+    IssueStateReason,
+    RestJSONKey,
+)
 from basstler_domain_model.repository import Repository
 
 REPOSITORY = Repository("an-owner", "a-repository")
@@ -171,3 +177,97 @@ def test_turning_on_actions_asks_github_for_them():
 
     assert accepted is True
     assert api.sent[0].payload == {RestJSONKey.ENABLED: True}
+
+
+# %% the issue board
+
+
+def issue_entry(number: int, labels: list[str]) -> dict[str, object]:
+    """:param number: The issue's number.
+    :param labels: The names of its labels.
+    :return: The issue as the issues API lists it."""
+    return {
+        RestJSONKey.NUMBER: number,
+        RestJSONKey.TITLE: f"Issue {number}",
+        RestJSONKey.LABELS: [{RestJSONKey.NAME: label} for label in labels],
+        RestJSONKey.STATE: IssueState.OPEN.value,
+    }
+
+
+def test_an_issue_is_filed_with_its_labels():
+    answers = {
+        ("POST", f"/{ROUTE.issues()}"): answer(
+            HTTPStatus.CREATED, {RestJSONKey.NUMBER: 12}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        number = client(api).open_issue("A title", "A body", ["finding"])
+
+    assert number == 12
+    assert api.sent[0].payload == {
+        RestJSONKey.TITLE: "A title",
+        RestJSONKey.BODY: "A body",
+        RestJSONKey.LABELS: ["finding"],
+    }
+
+
+def test_listed_issues_leave_the_pull_requests_out():
+    listing = ROUTE.listing(
+        ROUTE.issues(),
+        {QueryParameter.LABELS: "finding", QueryParameter.STATE: IssueState.OPEN},
+    )
+    pull_request = {**issue_entry(2, ["finding"]), RestJSONKey.PULL_REQUEST: {}}
+    answers = {
+        ("GET", f"/{listing}"): RecordedAnswer(
+            HTTPStatus.OK, json.dumps([issue_entry(1, ["finding"]), pull_request])
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        issues = client(api).issues(["finding"], IssueState.OPEN)
+
+    assert issues == [Issue(1, "Issue 1", ("finding",), IssueState.OPEN)]
+
+
+def test_an_issue_is_closed_with_its_reason():
+    answers = {("PATCH", f"/{ROUTE.issue(3)}"): answer(HTTPStatus.OK, {})}
+
+    with ReplayedApi(answers) as api:
+        client(api).close_issue(3, IssueStateReason.NOT_PLANNED)
+
+    assert api.sent[0].payload == {
+        RestJSONKey.STATE: IssueState.CLOSED,
+        RestJSONKey.STATE_REASON: IssueStateReason.NOT_PLANNED,
+    }
+
+
+def test_a_label_with_a_colour_is_created_in_it():
+    class ColouredLabel(GitHubLabel):
+        description = "A coloured label"
+        color = "b60205"
+
+    answers = {("POST", f"/{ROUTE.labels}"): answer(HTTPStatus.CREATED, {})}
+
+    with ReplayedApi(answers) as api:
+        client(api).create_label(ColouredLabel("urgent"))
+
+    assert api.sent[0].payload == {
+        RestJSONKey.NAME: "urgent",
+        RestJSONKey.DESCRIPTION: ColouredLabel.description,
+        RestJSONKey.COLOR: ColouredLabel.color,
+    }
+
+
+# %% review requests
+
+
+def test_the_pull_requests_awaiting_my_review_are_counted():
+    answers = {
+        ("GET", f"/{ROUTE.review_requests()}"): answer(
+            HTTPStatus.OK, {RestJSONKey.TOTAL_COUNT: 2, "items": []}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        assert client(api).awaiting_my_review() == 2

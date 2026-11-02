@@ -416,6 +416,7 @@ class RestJSONKey(StrEnum):
     DRAFT = "draft"
     BASE = "base"
     LABELS = "labels"
+    PULL_REQUEST = "pull_request"
     MERGEABLE_STATE = "mergeable_state"
     LOGIN = "login"
     DESCRIPTION = "description"

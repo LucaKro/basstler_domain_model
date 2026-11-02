@@ -52,6 +52,14 @@ class Author(JSONModel):
             return cls(cls.unknown_login)
         return cls(data[PullRequestJSONKey.LOGIN])
 
+    def has_login(self, login: str) -> bool:
+        """
+        :param login: A GitHub login, in any case.
+        :return: Whether it is this author's login, which GitHub matches regardless of
+            case.
+        """
+        return self.login.casefold() == login.casefold()
+
 
 @dataclass(frozen=True)
 class ThreadComment(JSONModel):

@@ -369,6 +369,22 @@ def test_a_clone_s_origin_is_the_repository_cloned(hosted: Repository, tmp_path:
     assert (origin.name, origin.repository) == (RemoteName.ORIGIN, hosted)
 
 
+def test_a_relative_destination_is_cloned_where_it_names(
+    checkout: GitCommandRunner,
+    hosted: Repository,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url = hosted.clone_url_under(f"file://{tmp_path / 'hosting'}")
+    monkeypatch.chdir(tmp_path)
+
+    GitCommandRunner.clone(url, Path("clones") / hosted.name)
+
+    assert GitCommandRunner(tmp_path / "clones" / hosted.name).commit_at(
+        "HEAD"
+    ) == checkout.commit_at("HEAD")
+
+
 def test_cloning_into_a_non_empty_directory_is_refused(
     hosted: Repository, tmp_path: Path
 ):

@@ -12,7 +12,7 @@ import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from http import HTTPStatus
+from http import HTTPMethod, HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +46,7 @@ class JobLogReader(ABC):
 
 class GraphQLClient(ABC):
     """
-    Sends a GraphQL document to GitHub and returns its ``data`` data.
+    Sends a GraphQL document to GitHub and returns its ``data`` member.
     """
 
     @abstractmethod
@@ -56,7 +56,7 @@ class GraphQLClient(ABC):
 
         :param query: The GraphQL document.
         :param variables: The document's variables.
-        :return: The response's ``data`` data.
+        :return: The response's ``data`` member.
         """
 
 
@@ -165,7 +165,7 @@ class RestAnswer:
     @property
     def succeeded(self) -> bool:
         """:return: Whether the status is a 2xx one."""
-        return 200 <= self.status < 300
+        return HTTPStatus.OK <= self.status < HTTPStatus.MULTIPLE_CHOICES
 
     @property
     def refused(self) -> bool:
@@ -198,6 +198,31 @@ class RestAnswer:
         if self.status not in self.redirect_statuses:
             return None
         return self.headers.get("location")
+
+    @classproperty
+    def method_keeping_redirect_statuses(cls) -> frozenset[int]:
+        """
+        The redirects that are followed with the method and body of the call they
+        answer.
+        """
+        return frozenset({HTTPStatus.TEMPORARY_REDIRECT, HTTPStatus.PERMANENT_REDIRECT})
+
+    def follow_up_method(self, method: str) -> str | None:
+        """
+        :param method: The HTTP method of the call this answers.
+        :return: The method to call :attr:`redirect` with, ``None`` when the answer is
+            not to be followed: a write moved by 301 or 302 is never turned into a read.
+        """
+        if self.redirect is None:
+            return None
+        if (
+            method == HTTPMethod.GET
+            or self.status in self.method_keeping_redirect_statuses
+        ):
+            return method
+        if self.status == HTTPStatus.SEE_OTHER:
+            return HTTPMethod.GET
+        return None
 
     @property
     def next_page(self) -> str | None:
@@ -253,8 +278,8 @@ class GitHubApi(GraphQLClient, RestApi, JobLogReader):
         self, method: str, path: str, payload: Mapping[str, Any] | None = None
     ) -> RestAnswer:
         """
-        Follows a redirect, with the token only when it stays on the API's host; see
-        :meth:`RestWriter.attempt`.
+        Follows a redirect as :meth:`RestAnswer.follow_up_method` says, with the token
+        only when it stays on the API's host; see :meth:`RestWriter.attempt`.
         """
         address = (
             path
@@ -262,13 +287,20 @@ class GitHubApi(GraphQLClient, RestApi, JobLogReader):
             else f"{self.api_root}/{path.removeprefix('/')}"
         )
         answer = self._exchange(method, address, payload, authorized=True)
-        if answer.redirect is None:
+        follow_up = answer.follow_up_method(method)
+        if follow_up is None:
             return answer
+        target = urllib.parse.urljoin(address, answer.redirect)
         same_host = (
-            urllib.parse.urlsplit(answer.redirect).netloc
+            urllib.parse.urlsplit(target).netloc
             == urllib.parse.urlsplit(self.api_root).netloc
         )
-        return self._exchange("GET", answer.redirect, None, authorized=same_host)
+        return self._exchange(
+            follow_up,
+            target,
+            payload if follow_up == method else None,
+            authorized=same_host,
+        )
 
     def request(
         self, method: str, path: str, payload: Mapping[str, Any] | None = None

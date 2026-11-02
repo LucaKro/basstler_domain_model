@@ -107,7 +107,7 @@ class RestPullRequestSummary(JSONModel):
             number=data[RestJSONKey.NUMBER],
             title=data[RestJSONKey.TITLE],
             url=data[RestJSONKey.HTML_URL],
-            state=PullRequestState(data[RestJSONKey.STATE]),
+            state=PullRequestState.from_value(data[RestJSONKey.STATE]),
             merged=data[RestJSONKey.MERGED_AT] is not None,
             head=RestPullRequestHead.from_json(data[RestJSONKey.HEAD]),
         )
@@ -146,7 +146,7 @@ class RestReview(JSONModel):
         return cls(
             Review(
                 author=Author.from_json(data[RestJSONKey.USER]),
-                state=ReviewState[data[RestJSONKey.STATE]],
+                state=ReviewState.from_name(data[RestJSONKey.STATE]),
                 body=data[RestJSONKey.BODY] or "",
                 submitted_at=data[RestJSONKey.SUBMITTED_AT] or "",
             )
@@ -280,7 +280,7 @@ class RestCheckRun(JSONModel):
             CheckResult(
                 name=data[RestJSONKey.NAME],
                 outcome=(
-                    CheckOutcome[conclusion.upper()]
+                    CheckOutcome.from_name(conclusion.upper())
                     if conclusion
                     else CheckOutcome.PENDING
                 ),
@@ -335,7 +335,7 @@ class RestCommitStatus(JSONModel):
         return cls(
             CheckResult(
                 name=data[RestJSONKey.CONTEXT],
-                outcome=CheckOutcome[data[RestJSONKey.STATE].upper()],
+                outcome=CheckOutcome.from_name(data[RestJSONKey.STATE].upper()),
                 url=data[RestJSONKey.TARGET_URL] or "",
             )
         )

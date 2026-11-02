@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from urllib.parse import urlsplit
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.exceptions import MalformedRepositoryError
 
 # %% addresses
@@ -26,6 +28,46 @@ class GitHubAddress(StrEnum):
     API = "https://api.github.com"
     """
     The root of every REST call.
+    """
+
+
+class RemoteHost(StrEnum):
+    """
+    The hosts a git remote URL naming a GitHub repository points at.
+    """
+
+    GITHUB = "github.com"
+    """
+    GitHub itself, over HTTPS or SSH.
+    """
+
+    LOOPBACK = "127.0.0.1"
+    """
+    This machine, where the proxy a cloud session reaches GitHub through answers under
+    :attr:`proxy_prefix`.
+    """
+
+    LOCALHOST = "localhost"
+    """
+    This machine, by name.
+    """
+
+    @classproperty
+    def proxy_prefix(cls) -> str:
+        """
+        The first path segment under which the local proxy serves GitHub's repositories.
+        """
+        return "git"
+
+
+class RemoteScheme(StrEnum):
+    """
+    The URL schemes of a git remote that need no host to name a GitHub repository.
+    """
+
+    FILE = "file"
+    """
+    A directory of bare repositories on this machine, standing in for GitHub.
     """
 
 
@@ -74,20 +116,28 @@ class Repository:
     @staticmethod
     def _remote_url_segments(url: str) -> list[str]:
         """
-        Split a remote URL into its path segments, discarding scheme and host.
-
-        :param url: The remote URL to split.
-        :return: The path segments, which name a repository when there are two or more.
+        :param url: A remote URL.
+        :return: Its path segments, which name a repository when there are two or more;
+            none when it points anywhere but GitHub, the local proxy to it, or a local
+            directory standing in for it.
         """
         reference = url.removesuffix(".git").rstrip("/")
-        if "://" in reference:
-            _, _, host_and_path = reference.partition("://")
-            _, _, path = host_and_path.partition("/")
-        elif ":" in reference:
-            _, _, path = reference.rpartition(":")
-        else:
-            return []
-        return [segment for segment in path.split("/") if segment]
+        if "://" not in reference:
+            authority, separator, path = reference.partition(":")
+            if not separator:
+                return []
+            reference = f"ssh://{authority}/{path}"
+        address = urlsplit(reference)
+        segments = [segment for segment in address.path.split("/") if segment]
+        if address.scheme == RemoteScheme.FILE or address.hostname == RemoteHost.GITHUB:
+            return segments
+        on_this_machine = address.hostname in (
+            RemoteHost.LOOPBACK,
+            RemoteHost.LOCALHOST,
+        )
+        if on_this_machine and segments[:1] == [RemoteHost.proxy_prefix]:
+            return segments[1:]
+        return []
 
     @classmethod
     def names_a_repository(cls, url: str) -> bool:
@@ -104,8 +154,9 @@ class Repository:
         """
         Read the repository a git remote URL points at.
 
-        Accepts every form a fork remote takes - HTTPS, SSH, and the local proxy a cloud
-        session is given - by discarding the host and taking the last two path segments.
+        Accepts every form a fork remote takes - HTTPS, SSH, the local proxy a cloud
+        session is given, and a local directory standing in for GitHub - and takes the
+        last two path segments.
 
         :param url: The remote URL to read.
         :return: The repository it names.

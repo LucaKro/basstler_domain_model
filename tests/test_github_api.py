@@ -93,6 +93,70 @@ def test_an_attempt_reports_a_refusal_instead_of_raising_it():
     assert answer.body == json.loads(DatasetLocation.REFUSAL.read_text())
 
 
+# %% redirects
+
+
+def test_a_write_redirected_temporarily_is_repeated_at_the_new_address() -> None:
+    old, new = f"/{REPOSITORY.api_path}", "/repos/an-owner/a-new-name"
+    payload = {"has_issues": True}
+    with ReplayedApi() as api:
+        api.answers[("PATCH", old)] = RecordedAnswer(
+            HTTPStatus.TEMPORARY_REDIRECT, headers={"Location": f"{api.url}{new}"}
+        )
+        api.answers[("PATCH", new)] = RecordedAnswer(HTTPStatus.OK, "{}")
+
+        GitHubApi(TOKEN, api.url).request("PATCH", old, payload)
+
+    assert [(sent.method, sent.path, sent.payload) for sent in api.sent] == [
+        ("PATCH", old, payload),
+        ("PATCH", new, payload),
+    ]
+
+
+def test_a_write_moved_permanently_is_not_replayed_as_a_read() -> None:
+    old, new = f"/{REPOSITORY.api_path}", "/repos/an-owner/a-new-name"
+    with ReplayedApi() as api:
+        api.answers[("PATCH", old)] = RecordedAnswer(
+            HTTPStatus.MOVED_PERMANENTLY, headers={"Location": f"{api.url}{new}"}
+        )
+        api.answers[("GET", new)] = RecordedAnswer(HTTPStatus.OK, "{}")
+
+        with pytest.raises(GitHubRequestFailed) as raised:
+            GitHubApi(TOKEN, api.url).request("PATCH", old, {"has_issues": True})
+
+    assert raised.value.status == HTTPStatus.MOVED_PERMANENTLY
+
+
+def test_a_write_answered_with_see_other_reads_the_address_named() -> None:
+    old, new = f"/{REPOSITORY.api_path}", "/repos/an-owner/a-new-name"
+    with ReplayedApi() as api:
+        api.answers[("POST", old)] = RecordedAnswer(
+            HTTPStatus.SEE_OTHER, headers={"Location": f"{api.url}{new}"}
+        )
+        api.answers[("GET", new)] = RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.PAGE_ONE
+        )
+
+        read = GitHubApi(TOKEN, api.url).request("POST", old, {"has_issues": True})
+
+    assert read == json.loads(DatasetLocation.PAGE_ONE.read_text())
+
+
+def test_a_relative_redirect_is_followed_on_the_api_s_host_with_the_token() -> None:
+    old, new = f"/{REPOSITORY.api_path}", "/repos/an-owner/a-new-name"
+    answers = {
+        ("GET", old): RecordedAnswer(
+            HTTPStatus.MOVED_PERMANENTLY, headers={"Location": new}
+        ),
+        ("GET", new): RecordedAnswer.from_file(HTTPStatus.OK, DatasetLocation.PAGE_ONE),
+    }
+
+    with ReplayedApi(answers) as api:
+        GitHubApi(TOKEN, api.url).get(old)
+
+    assert (api.sent[1].path, api.sent[1].authorization) == (new, f"Bearer {TOKEN}")
+
+
 # %% GraphQL
 
 

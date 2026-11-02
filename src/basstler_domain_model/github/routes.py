@@ -211,7 +211,7 @@ class RepositoryRoute:
     def label(self, name: str) -> str:
         """:param name: The label.
         :return: That label."""
-        return f"{self.labels}/{quote(name)}"
+        return f"{self.labels}/{quote(name, safe='')}"
 
     def comparison(self, base: str, head: str) -> str:
         """

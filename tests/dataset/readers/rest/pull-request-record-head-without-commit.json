@@ -1,0 +1,23 @@
+{
+  "number": 10,
+  "title": "A pull request",
+  "body": null,
+  "draft": false,
+  "head": {
+    "ref": "a-branch",
+    "repo": {
+      "full_name": "a-fork-owner/a-repository"
+    }
+  },
+  "base": {
+    "ref": "main"
+  },
+  "labels": [
+    {
+      "name": "ready"
+    },
+    {
+      "name": "type/bug"
+    }
+  ]
+}

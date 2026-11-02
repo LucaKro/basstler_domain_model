@@ -1,0 +1,15 @@
+[
+  {
+    "number": 12,
+    "title": "A pull request",
+    "html_url": "https://github.com/upstream-owner/a-repository/pull/12",
+    "state": "closed",
+    "merged_at": null,
+    "head": {
+      "sha": "a1b2c3",
+      "user": {
+        "login": "a-fork-owner"
+      }
+    }
+  }
+]

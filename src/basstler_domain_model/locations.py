@@ -19,7 +19,7 @@ class PathEnumeration(Path, ReprEnum):
     subprocess, formatted as its text - and every path derived from one is a plain
     :class:`~pathlib.Path`.
 
-    ..warning:: ``Path.name`` shadows the enumeration's own ``name``: ``member.name`` is
+    .. warning:: ``Path.name`` shadows the enumeration's own ``name``: ``member.name`` is
         the path's last component, and the member's name is ``member._name_``.
     """
 

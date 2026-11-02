@@ -19,13 +19,13 @@ class GitCommandFailed(ExternalCallFailed):
 
     arguments: tuple[str, ...] = ()
     """
-    The git subcommand and its arguments, as invoked.
+    The command and its arguments, ``git`` included, as invoked.
     """
 
     @property
     def call(self) -> str:
         """:return: The git command line, as invoked."""
-        return f"git {' '.join(self.arguments)}"
+        return " ".join(self.arguments)
 
 
 @dataclass

@@ -148,11 +148,28 @@ def test_a_deleted_branch_is_gone_from_its_remote(
 def test_a_fetched_branch_moves_only_its_tracking_reference(
     checkout: GitCommandRunner, published: RemoteBranch
 ):
-    checkout.fetch_branch(published.remote, published.name, published.remote)
+    checkout.fetch_branch(published)
 
     assert checkout.commit_at(published.tracking_reference) == checkout.commit_at(
         "HEAD"
     )
+
+
+def test_a_branch_only_ending_in_another_s_reference_is_not_its_tip(
+    checkout: GitCommandRunner, published: RemoteBranch
+) -> None:
+    absent = RemoteBranch(published.remote, "absent")
+    checkout.run(
+        "push", "--quiet", published.remote, f"HEAD:refs/heads/a/{absent.reference}"
+    )
+
+    assert checkout.remote_branch_tip(absent) is None
+
+
+def test_a_git_result_keeps_the_command_as_invoked(
+    checkout: GitCommandRunner,
+) -> None:
+    assert checkout.attempt("version").arguments == ("git", "version")
 
 
 # %% committing without a checkout

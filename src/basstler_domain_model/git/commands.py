@@ -51,19 +51,14 @@ class GitCommandResult(CommandResult):
     One finished git command, whether or not it succeeded.
     """
 
-    arguments: tuple[str, ...]
-    """
-    The git subcommand and its arguments, as invoked, without ``git`` itself.
-    """
-
     @classmethod
     def of(cls, result: CommandResult) -> GitCommandResult:
         """
         :param result: A finished ``git`` command.
-        :return: It, its arguments without ``git`` itself.
+        :return: It, as a git command.
         """
         return cls(
-            result.arguments[1:],
+            result.arguments,
             result.exit_status,
             result.output,
             result.error_output,
@@ -255,24 +250,19 @@ class GitCommandRunner:
         """
         self.run("fetch", "--quiet", remote, *references)
 
-    def fetch_branch(
-        self, location: str, branch: str, tracking_remote: str
-    ) -> GitCommandResult:
+    def fetch_branch(self, branch: RemoteBranch) -> GitCommandResult:
         """
         Fetch one branch into its tracking ref, leaving ``FETCH_HEAD`` alone.
 
-        :param location: The remote name or URL to fetch from.
         :param branch: The branch to fetch.
-        :param tracking_remote: The remote whose tracking refs the branch is kept under.
         :return: The finished fetch, whose failure is an expected outcome.
         """
-        tracked = RemoteBranch(tracking_remote, branch)
         return self.attempt(
             "fetch",
             "--quiet",
             "--no-write-fetch-head",
-            location,
-            f"+{tracked.reference}:{tracked.tracking_reference}",
+            branch.remote,
+            f"+{branch.reference}:{branch.tracking_reference}",
         )
 
     def has_remote_branch(self, branch: RemoteBranch) -> bool:
@@ -291,7 +281,14 @@ class GitCommandRunner:
         :raises GitCommandFailed: If the remote cannot be reached.
         """
         listed = self.run("ls-remote", branch.remote, branch.reference)
-        return listed.split()[0] if listed else None
+        return next(
+            (
+                commit
+                for commit, reference in (line.split() for line in listed.splitlines())
+                if reference == branch.reference
+            ),
+            None,
+        )
 
     def commit_or_none(self, reference: str) -> str | None:
         """:param reference: A ref that may not exist.

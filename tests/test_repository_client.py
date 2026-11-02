@@ -282,6 +282,10 @@ def test_a_slash_in_an_issue_label_stays_within_its_path_segment():
     assert ROUTE.issue_label(8, "type/bug") == f"{ROUTE.issue_labels(8)}/type%2Fbug"
 
 
+def test_a_slash_in_a_repository_label_stays_within_its_path_segment() -> None:
+    assert ROUTE.label("type/bug") == f"{ROUTE.labels}/type%2Fbug"
+
+
 def test_an_issue_is_closed_with_its_reason():
     answers = {("PATCH", f"/{ROUTE.issue(3)}"): answer(HTTPStatus.OK, {})}
 

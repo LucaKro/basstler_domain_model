@@ -393,6 +393,17 @@ class GitCommandRunner:
         """
         return self.attempt("merge", "--quiet", "--ff-only", reference)
 
+    def fast_forward_branch(self, branch: str, reference: str) -> GitCommandResult:
+        """
+        Move a branch that is not checked out forward to a reference.
+
+        :param branch: The branch to move.
+        :param reference: Where to move it, a descendant of its commit.
+        :return: The finished move, refused when the branch has commits the reference
+            lacks or is checked out in any worktree.
+        """
+        return self.attempt("fetch", "--quiet", ".", f"{reference}:refs/heads/{branch}")
+
     def reset_kept(self, reference: str) -> None:
         """
         Move the checked-out branch to another commit, keeping uncommitted changes.

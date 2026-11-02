@@ -6,6 +6,7 @@ could run.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from basstler_domain_model.commands import CommandRunner
 
@@ -33,3 +34,19 @@ def test_a_command_that_is_not_installed_comes_back_as_a_result(tmp_path):
 
     assert not result.succeeded
     assert result.exit_status is None
+
+
+def test_a_command_that_runs_too_long_comes_back_unfinished(tmp_path: Path) -> None:
+    result = CommandRunner(tmp_path).run(
+        sys.executable, "-c", "import time; time.sleep(5)", timeout_seconds=0.2
+    )
+
+    assert result.exit_status is None
+
+
+def test_a_command_given_no_input_reads_none(tmp_path: Path) -> None:
+    result = CommandRunner(tmp_path).run(
+        sys.executable, "-c", "import sys; print(len(sys.stdin.read()))"
+    )
+
+    assert result.output == "0"

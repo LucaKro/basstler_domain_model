@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.environment import GitVariable
 from basstler_domain_model.repository import Repository
@@ -190,6 +191,14 @@ class GitCommandRunner:
     The checkout every command runs in.
     """
 
+    @classproperty
+    def unattended_environment(cls) -> dict[str, str]:
+        """
+        The variables every git command runs with, so it fails rather than waits for a
+        person.
+        """
+        return {GitVariable.TERMINAL_PROMPT: "0"}
+
     @classmethod
     def clone(cls, url: str, destination: Path) -> GitCommandRunner:
         """
@@ -208,7 +217,8 @@ class GitCommandRunner:
         self, *arguments: str, environment: Mapping[str, str] | None = None
     ) -> GitCommandResult:
         """
-        Run a command whose failure is an expected outcome.
+        Run a command whose failure is an expected outcome, failing rather than
+        prompting on the terminal.
 
         :param arguments: The git subcommand and its arguments.
         :param environment: Variables to set for this command on top of the process's
@@ -217,7 +227,9 @@ class GitCommandRunner:
         """
         return GitCommandResult.of(
             CommandRunner(self.working_directory).run(
-                "git", *arguments, environment=environment
+                "git",
+                *arguments,
+                environment={**self.unattended_environment, **(environment or {})},
             )
         )
 

@@ -28,7 +28,8 @@ class CommandResult:
 
     exit_status: int | None
     """
-    The status it exited with, ``None`` when the command is not installed.
+    The status it exited with, ``None`` when it did not finish: the command is not
+    installed, or ran out of time.
     """
 
     output: str
@@ -83,12 +84,15 @@ class CommandRunner:
         *arguments: str,
         standard_input: str | None = None,
         environment: Mapping[str, str] | None = None,
+        timeout_seconds: float = 600.0,
     ) -> CommandResult:
         """
         :param arguments: The command and its arguments.
-        :param standard_input: What to write to its standard input, if anything.
+        :param standard_input: What to write to its standard input; without it, the
+            command reads an empty one.
         :param environment: Variables to set for this command on top of the process's
             own.
+        :param timeout_seconds: How long the command may run before it is stopped.
         :return: The finished command.
         """
         if shutil.which(arguments[0]) is None:
@@ -96,14 +100,25 @@ class CommandRunner:
                 arguments, None, "", f"{arguments[0]} is not installed", 0.0
             )
         started = time.monotonic()
-        completed = subprocess.run(
-            arguments,
-            cwd=self.working_directory,
-            input=standard_input,
-            env={**os.environ, **(environment or {})},
-            capture_output=True,
-            text=True,
-        )
+        try:
+            completed = subprocess.run(
+                arguments,
+                cwd=self.working_directory,
+                input=standard_input,
+                stdin=subprocess.DEVNULL if standard_input is None else None,
+                env={**os.environ, **(environment or {})},
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            return CommandResult(
+                arguments,
+                None,
+                "",
+                f"{arguments[0]} did not finish within {timeout_seconds} seconds",
+                round(time.monotonic() - started, 2),
+            )
         return CommandResult(
             arguments,
             completed.returncode,

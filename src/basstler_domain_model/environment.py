@@ -135,6 +135,12 @@ class GitVariable(EnvironmentVariable):
     The index git builds a tree in, set to keep the checkout's own index untouched.
     """
 
+    TERMINAL_PROMPT = "GIT_TERMINAL_PROMPT"
+    """
+    Whether git may prompt on the terminal for a credential, ``0`` to make it fail
+    instead.
+    """
+
 
 class GitIdentityVariable(EnvironmentVariable):
     """

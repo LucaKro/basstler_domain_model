@@ -214,6 +214,33 @@ class RepositorySettings(ABC):
             settings is refused.
         """
 
+    @abstractmethod
+    def issues_enabled(self) -> bool:
+        """:return: Whether the repository has issues turned on."""
+
+    @abstractmethod
+    def turn_on_issues(self) -> bool:
+        """
+        Turn the repository's issues on.
+
+        :return: Whether GitHub accepted the change.
+        """
+
+    @abstractmethod
+    def actions_enabled(self) -> bool | None:
+        """
+        :return: Whether GitHub Actions may run in the repository, ``None`` when the
+            credential may not read that.
+        """
+
+    @abstractmethod
+    def turn_on_actions(self) -> bool:
+        """
+        Let GitHub Actions run in the repository.
+
+        :return: Whether GitHub accepted the change.
+        """
+
 
 class CommitChecks(ABC):
     """
@@ -445,6 +472,25 @@ class GitHubRepository(
     def turn_on_merged_branch_deletion(self) -> bool:
         return self.api.attempt(
             "PATCH", self.route.root, {RestJSONKey.DELETE_BRANCH_ON_MERGE: True}
+        ).succeeded
+
+    def issues_enabled(self) -> bool:
+        return bool(self.api.get(self.route.root)[RestJSONKey.HAS_ISSUES])
+
+    def turn_on_issues(self) -> bool:
+        return self.api.attempt(
+            "PATCH", self.route.root, {RestJSONKey.HAS_ISSUES: True}
+        ).succeeded
+
+    def actions_enabled(self) -> bool | None:
+        permissions = self.api.attempt("GET", self.route.actions_permissions)
+        if not permissions.succeeded:
+            return None
+        return bool(permissions.body[RestJSONKey.ENABLED])
+
+    def turn_on_actions(self) -> bool:
+        return self.api.attempt(
+            "PUT", self.route.actions_permissions, {RestJSONKey.ENABLED: True}
         ).succeeded
 
     def set_base(self, number: int, branch: str) -> None:

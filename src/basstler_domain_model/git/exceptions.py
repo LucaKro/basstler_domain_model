@@ -5,6 +5,7 @@ The errors running git ends in.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from basstler_domain_model.exceptions import DataclassException, ExternalCallFailed
 
@@ -70,3 +71,28 @@ class StorageBranchPushRefused(DataclassException, RuntimeError):
 
     def suggest_correction(self) -> str:
         return "Run the write again; if it keeps failing, check access to the remote."
+
+
+@dataclass
+class StorageBranchWriteConflict(DataclassException, RuntimeError):
+    """
+    Raised when another writer changed a file on a storage branch that a write, built on
+    the tip before, would overwrite.
+    """
+
+    branch: str
+    """
+    The storage branch.
+    """
+
+    paths: tuple[Path, ...]
+    """
+    The files both writers changed.
+    """
+
+    def error_message(self) -> str:
+        changed = ", ".join(str(path) for path in self.paths)
+        return f"{changed} on {self.branch} changed since this write was built"
+
+    def suggest_correction(self) -> str:
+        return "Fetch the branch, read the files again and write them anew."

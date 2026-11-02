@@ -65,7 +65,7 @@ class GitCommandResult(CommandResult):
         return cls(
             result.arguments[1:],
             result.exit_status,
-            result.output,
+            result.standard_output,
             result.error_output,
             result.seconds,
         )
@@ -521,7 +521,7 @@ class GitCommandRunner:
                 self.run("read-tree", parent, environment=index)
             for path, text in files.items():
                 staged = Path(directory) / "content"
-                staged.write_text(text)
+                staged.write_text(text, encoding="utf-8", newline="")
                 blob = self.run("hash-object", "-w", str(staged))
                 self.run(
                     "update-index",

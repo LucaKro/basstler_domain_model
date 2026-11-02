@@ -15,7 +15,10 @@ from basstler_domain_model.git.commands import (
     ProposedPush,
     RemoteBranch,
 )
-from basstler_domain_model.git.exceptions import StorageBranchPushRefused
+from basstler_domain_model.git.exceptions import (
+    StorageBranchPushRefused,
+    StorageBranchWriteConflict,
+)
 
 # %% the branch
 
@@ -61,7 +64,7 @@ class StorageBranch:
         :return: Its content as last fetched, ``None`` when it does not exist.
         """
         shown = self.git.attempt("show", f"{self.branch.tracking_reference}:{path}")
-        return shown.output if shown.succeeded else None
+        return shown.standard_output if shown.succeeded else None
 
     def write(self, files: Mapping[Path, str], message: str) -> None:
         """
@@ -72,15 +75,46 @@ class StorageBranch:
 
         :param files: The text of each file to write.
         :param message: The commit message.
+        :raises StorageBranchWriteConflict: If another writer pushed first and changed
+            one of *files*.
         :raises StorageBranchPushRefused: If the push is refused twice.
         """
+        base = self.git.commit_or_none(self.branch.tracking_reference)
         pushed = self._push(files, message)
         if not pushed.succeeded:
             self.fetch()
+            self._refuse_overwriting(base, files)
             pushed = self._push(files, message)
         if not pushed.succeeded:
             raise StorageBranchPushRefused(self.branch.name, pushed.error_output)
         self.fetch()
+
+    def _refuse_overwriting(self, base: str | None, files: Mapping[Path, str]) -> None:
+        """
+        :param base: The tip the write was first built on, ``None`` when the branch did
+            not exist.
+        :param files: The files the write changes.
+        :raises StorageBranchWriteConflict: If any of *files* differs between *base* and
+            the fetched tip.
+        """
+        tip = self.git.commit_or_none(self.branch.tracking_reference)
+        changed = tuple(
+            path for path in files if self._blob(base, path) != self._blob(tip, path)
+        )
+        if changed:
+            raise StorageBranchWriteConflict(self.branch.name, changed)
+
+    def _blob(self, commit: str | None, path: Path) -> str | None:
+        """
+        :param commit: A commit, ``None`` for none.
+        :param path: A file.
+        :return: The object holding the file's content in *commit*, ``None`` when it
+            has no such file.
+        """
+        if commit is None:
+            return None
+        found = self.git.attempt("rev-parse", "--verify", "--quiet", f"{commit}:{path}")
+        return found.output if found.succeeded else None
 
     def _push(self, files: Mapping[Path, str], message: str) -> GitCommandResult:
         """

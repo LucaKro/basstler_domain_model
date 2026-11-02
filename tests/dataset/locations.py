@@ -98,6 +98,12 @@ class DatasetLocation(PathEnumeration):
     A job's log, as blob storage serves it.
     """
 
+    REPOSITORY = DIRECTORY / "api" / "repository.json"
+    """
+    A repository as REST describes it: trunk as its default branch, issues and the
+    deletion of merged branches off.
+    """
+
     REFUSAL = DIRECTORY / "api" / "refusal.json"
     """
     The body of a refused call.
@@ -193,32 +199,25 @@ class DatasetLocation(PathEnumeration):
     No commit statuses on a commit.
     """
 
-    REST_PULL_REQUEST_RECORD = (
-        DIRECTORY / "readers" / "rest" / "pull-request-record.json"
-    )
+    PULL_REQUEST_OPEN = DIRECTORY / "pull_requests" / "open.json"
     """
-    A pull request as REST answers it, read field by field.
+    An open draft pull request as REST reads it, conflicting with its base.
     """
 
-    REST_PULL_REQUEST_RECORD_HEAD_REPOSITORY_DELETED = (
-        DIRECTORY
-        / "readers"
-        / "rest"
-        / "pull-request-record-head-repository-deleted.json"
+    PULL_REQUEST_HEAD_REPOSITORY_DELETED = (
+        DIRECTORY / "pull_requests" / "head-repository-deleted.json"
     )
     """
     The same pull request, its head repository deleted.
     """
 
-    REST_PULL_REQUEST_RECORD_WITHOUT_DRAFT = (
-        DIRECTORY / "readers" / "rest" / "pull-request-record-without-draft.json"
-    )
+    PULL_REQUEST_WITHOUT_DRAFT = DIRECTORY / "pull_requests" / "without-draft.json"
     """
     The same pull request, missing whether it is a draft.
     """
 
-    REST_PULL_REQUEST_RECORD_HEAD_WITHOUT_COMMIT = (
-        DIRECTORY / "readers" / "rest" / "pull-request-record-head-without-commit.json"
+    PULL_REQUEST_HEAD_WITHOUT_COMMIT = (
+        DIRECTORY / "pull_requests" / "head-without-commit.json"
     )
     """
     The same pull request, its head missing the commit it is at.

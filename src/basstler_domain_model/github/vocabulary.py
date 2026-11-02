@@ -464,6 +464,9 @@ class RestJSONKey(StrEnum):
     ALLOWED_ACTIONS = "allowed_actions"
     WORKFLOW_RUNS = "workflow_runs"
     STATUS = "status"
+    REFERENCE = "ref"
+    REPOSITORY = "repo"
+    FULL_NAME = "full_name"
 
 
 # %% issues and workflow runs

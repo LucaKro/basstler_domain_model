@@ -7,7 +7,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from basstler_domain_model.github.pull_request_fields import PullRequestHeadKey
 from basstler_domain_model.github.vocabulary import (
     JSONModel,
     PullRequestState,
@@ -59,7 +58,7 @@ class StackedPullRequest(JSONModel):
                 else PullRequestState.from_value(data[RestJSONKey.STATE])
             ),
             draft=data[RestJSONKey.DRAFT],
-            branch=data[RestJSONKey.HEAD][PullRequestHeadKey.REFERENCE],
+            branch=data[RestJSONKey.HEAD][RestJSONKey.REFERENCE],
         )
 
 
@@ -100,7 +99,7 @@ class Stack(JSONModel):
         """
         return cls(
             number=data[RestJSONKey.NUMBER],
-            base=data[RestJSONKey.BASE][PullRequestHeadKey.REFERENCE],
+            base=data[RestJSONKey.BASE][RestJSONKey.REFERENCE],
             open=data[RestJSONKey.OPEN],
             pull_requests=[
                 StackedPullRequest.from_json(entry)

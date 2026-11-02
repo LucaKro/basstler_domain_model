@@ -23,6 +23,7 @@ from basstler_domain_model.github.vocabulary import (
     CheckOutcome,
     JSONModel,
     PullRequestJSONKey,
+    RestJSONKey,
     RollupState,
 )
 
@@ -78,6 +79,39 @@ class CheckResult(JSONModel):
             name=data[PullRequestJSONKey.CONTEXT],
             outcome=CheckOutcome.from_name(data[PullRequestJSONKey.STATE]),
             url=data[PullRequestJSONKey.TARGET_URL] or "",
+        )
+
+    @classmethod
+    def from_check_run_json(cls, data: dict[str, Any]) -> CheckResult:
+        """
+        Read a check run as REST lists it, whose conclusion is null until it finishes.
+
+        :param data: The check run object.
+        :return: The parsed check.
+        """
+        conclusion = data[RestJSONKey.CONCLUSION]
+        return cls(
+            name=data[RestJSONKey.NAME],
+            outcome=(
+                CheckOutcome.from_name(conclusion.upper())
+                if conclusion
+                else CheckOutcome.PENDING
+            ),
+            url=data[RestJSONKey.DETAILS_URL] or "",
+        )
+
+    @classmethod
+    def from_commit_status_json(cls, data: dict[str, Any]) -> CheckResult:
+        """
+        Read a status posted through the commit-status API.
+
+        :param data: The status object.
+        :return: The parsed check.
+        """
+        return cls(
+            name=data[RestJSONKey.CONTEXT],
+            outcome=CheckOutcome.from_name(data[RestJSONKey.STATE].upper()),
+            url=data[RestJSONKey.TARGET_URL] or "",
         )
 
     @property

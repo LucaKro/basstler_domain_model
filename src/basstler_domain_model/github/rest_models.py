@@ -1,6 +1,5 @@
 """
-Models of a pull request's REST responses, each parsed into the same models a GraphQL
-read builds.
+Models of GitHub's REST responses, each parsed into a typed model as it arrives.
 """
 
 from __future__ import annotations
@@ -8,66 +7,80 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from basstler_domain_model.github.pull_request_models import (
-    CheckResult,
-)
+from basstler_domain_model.class_property import classproperty
+from basstler_domain_model.github.exceptions import MissingPullRequestFieldError
+from basstler_domain_model.github.pull_request_models import CheckResult
 from basstler_domain_model.github.review_models import (
     Author,
     BranchPullRequest,
-    Review,
     ReviewThread,
     ThreadComment,
 )
 from basstler_domain_model.github.vocabulary import (
-    CheckOutcome,
     JSONModel,
+    MergeableState,
     PullRequestState,
     RestJSONKey,
-    ReviewState,
 )
 
-# %% models mirroring the REST data
+# %% a pull request
 
 
 @dataclass(frozen=True)
-class RestPullRequestHead(JSONModel):
+class PullRequestHead(JSONModel):
     """
-    The branch a pull request was opened from.
+    The branch a pull request would merge, where it lives, and the commit it is at.
     """
 
-    sha: str
+    branch: str
     """
-    The commit the branch points at, which the checks are reported against.
+    The head branch's name.
+    """
+
+    repository: str | None
+    """
+    The ``owner/name`` of the repository the head branch lives in, ``None`` once that
+    repository is deleted.
+    """
+
+    commit: str
+    """
+    The commit the head branch points at, which the checks are reported against.
     """
 
     owner: Author
     """
-    Whoever owns the branch.
+    Whoever owns the head branch.
     """
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RestPullRequestHead:
+    def from_json(cls, data: dict[str, Any]) -> PullRequestHead:
         """
         Read a ``head`` object.
 
         :param data: The object to read.
         :return: The parsed head.
         """
+        repository = data[RestJSONKey.REPOSITORY]
         return cls(
-            sha=data[RestJSONKey.SHA],
+            branch=data[RestJSONKey.REFERENCE],
+            repository=(
+                None if repository is None else repository[RestJSONKey.FULL_NAME]
+            ),
+            commit=data[RestJSONKey.SHA],
             owner=Author.from_json(data[RestJSONKey.USER]),
         )
 
 
 @dataclass(frozen=True)
-class RestPullRequestSummary(JSONModel):
+class RestPullRequest(JSONModel):
     """
     One pull request as REST describes it, whether listed or read on its own.
     """
 
     number: int
     """
-    Its number on the upstream repository.
+    Its number in the repository.
     """
 
     title: str
@@ -75,9 +88,14 @@ class RestPullRequestSummary(JSONModel):
     Its title.
     """
 
+    body: str | None
+    """
+    Its description, ``None`` when it has none.
+    """
+
     url: str
     """
-    Its web URL.
+    Its page on GitHub.
     """
 
     state: PullRequestState
@@ -87,29 +105,83 @@ class RestPullRequestSummary(JSONModel):
 
     merged: bool
     """
-    Whether it closed by merging.
+    Whether it closed by merging through GitHub.
     """
 
-    head: RestPullRequestHead
+    draft: bool
     """
-    The branch it was opened from.
+    Whether it is still a draft.
     """
+
+    head: PullRequestHead
+    """
+    The branch it would merge.
+    """
+
+    base: str
+    """
+    The branch it would merge into.
+    """
+
+    labels: tuple[str, ...]
+    """
+    The names of the labels it carries.
+    """
+
+    mergeable_state: MergeableState | None
+    """
+    GitHub's verdict on whether it can merge, ``None`` where GitHub does not report one,
+    as in a listing.
+    """
+
+    @classproperty
+    def required_keys(cls) -> tuple[RestJSONKey, ...]:
+        """
+        The keys a pull request cannot be read without.
+        """
+        return (
+            RestJSONKey.NUMBER,
+            RestJSONKey.TITLE,
+            RestJSONKey.HTML_URL,
+            RestJSONKey.STATE,
+            RestJSONKey.DRAFT,
+            RestJSONKey.HEAD,
+            RestJSONKey.BASE,
+            RestJSONKey.LABELS,
+        )
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RestPullRequestSummary:
+    def from_json(cls, data: dict[str, Any]) -> RestPullRequest:
         """
         Read a pull request object.
 
         :param data: The object to read.
-        :return: The parsed summary.
+        :return: The parsed pull request.
+        :raises MissingPullRequestFieldError: If a key it cannot be read without is
+            absent, or its head does not say where it lives or which commit it is at.
         """
+        number = data.get(RestJSONKey.NUMBER)
+        missing = [key for key in cls.required_keys if data.get(key) is None]
+        if missing:
+            raise MissingPullRequestFieldError(missing[0], number)
+        head = data[RestJSONKey.HEAD]
+        if RestJSONKey.REPOSITORY not in head or not head.get(RestJSONKey.SHA):
+            raise MissingPullRequestFieldError(RestJSONKey.HEAD, number)
+        mergeable_state = data.get(RestJSONKey.MERGEABLE_STATE)
         return cls(
-            number=data[RestJSONKey.NUMBER],
+            number=number,
             title=data[RestJSONKey.TITLE],
+            body=data.get(RestJSONKey.BODY),
             url=data[RestJSONKey.HTML_URL],
             state=PullRequestState(data[RestJSONKey.STATE]),
-            merged=data[RestJSONKey.MERGED_AT] is not None,
-            head=RestPullRequestHead.from_json(data[RestJSONKey.HEAD]),
+            merged=data.get(RestJSONKey.MERGED_AT) is not None,
+            draft=data[RestJSONKey.DRAFT],
+            head=PullRequestHead.from_json(head),
+            base=data[RestJSONKey.BASE][RestJSONKey.REFERENCE],
+            labels=tuple(label[RestJSONKey.NAME] for label in data[RestJSONKey.LABELS]),
+            mergeable_state=(
+                None if mergeable_state is None else MergeableState(mergeable_state)
+            ),
         )
 
     @property
@@ -124,63 +196,46 @@ class RestPullRequestSummary(JSONModel):
         )
 
 
-@dataclass(frozen=True)
-class RestReview(JSONModel):
-    """
-    One submitted review, as REST lists it.
-    """
-
-    review: Review
-    """
-    The review it describes.
-    """
-
-    @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RestReview:
-        """
-        Read a review object, whose body and submission time are null until submitted.
-
-        :param data: The object to read.
-        :return: The parsed review.
-        """
-        return cls(
-            Review(
-                author=Author.from_json(data[RestJSONKey.USER]),
-                state=ReviewState[data[RestJSONKey.STATE]],
-                body=data[RestJSONKey.BODY] or "",
-                submitted_at=data[RestJSONKey.SUBMITTED_AT] or "",
-            )
-        )
+# %% a repository
 
 
 @dataclass(frozen=True)
-class RestReviewComment(JSONModel):
+class RestRepository(JSONModel):
     """
-    One review comment, as REST lists every comment on a pull request.
+    The repository itself, as REST describes it.
     """
 
-    comment: ThreadComment
+    default_branch: str
     """
-    The comment it describes.
+    The branch pull requests target unless told otherwise.
+    """
+
+    deletes_merged_branches: bool
+    """
+    Whether GitHub deletes a pull request's branch once it is merged.
+    """
+
+    issues_enabled: bool
+    """
+    Whether the repository has issues turned on.
     """
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RestReviewComment:
+    def from_json(cls, data: dict[str, Any]) -> RestRepository:
         """
-        Read a review comment object.
+        Read a repository object.
 
         :param data: The object to read.
-        :return: The parsed comment.
+        :return: The parsed repository.
         """
         return cls(
-            ThreadComment(
-                database_identifier=data[RestJSONKey.IDENTIFIER],
-                author=Author.from_json(data[RestJSONKey.USER]),
-                body=data[RestJSONKey.BODY],
-                created_at=data[RestJSONKey.CREATED_AT],
-                url=data[RestJSONKey.HTML_URL],
-            )
+            default_branch=data[RestJSONKey.DEFAULT_BRANCH],
+            deletes_merged_branches=data[RestJSONKey.DELETE_BRANCH_ON_MERGE],
+            issues_enabled=data[RestJSONKey.HAS_ISSUES],
         )
+
+
+# %% review threads
 
 
 @dataclass(frozen=True)
@@ -256,37 +311,7 @@ class RestReviewThread(JSONModel):
         )
 
 
-@dataclass(frozen=True)
-class RestCheckRun(JSONModel):
-    """
-    One check run, such as a GitHub Actions job.
-    """
-
-    result: CheckResult
-    """
-    The check it describes.
-    """
-
-    @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RestCheckRun:
-        """
-        Read a check run object, whose conclusion is null until it finishes.
-
-        :param data: The object to read.
-        :return: The parsed check run.
-        """
-        conclusion = data[RestJSONKey.CONCLUSION]
-        return cls(
-            CheckResult(
-                name=data[RestJSONKey.NAME],
-                outcome=(
-                    CheckOutcome[conclusion.upper()]
-                    if conclusion
-                    else CheckOutcome.PENDING
-                ),
-                url=data[RestJSONKey.DETAILS_URL] or "",
-            )
-        )
+# %% checks on a commit
 
 
 @dataclass(frozen=True)
@@ -295,7 +320,7 @@ class RestCheckRunPage(JSONModel):
     One page of the check runs reported against a commit.
     """
 
-    check_runs: list[RestCheckRun]
+    check_runs: list[CheckResult]
     """
     The check runs on this page.
     """
@@ -309,35 +334,10 @@ class RestCheckRunPage(JSONModel):
         :return: The parsed page.
         """
         return cls(
-            [RestCheckRun.from_json(run) for run in data[RestJSONKey.CHECK_RUNS]]
-        )
-
-
-@dataclass(frozen=True)
-class RestCommitStatus(JSONModel):
-    """
-    One status posted through the commit-status API.
-    """
-
-    result: CheckResult
-    """
-    The check it describes.
-    """
-
-    @classmethod
-    def from_json(cls, data: dict[str, Any]) -> RestCommitStatus:
-        """
-        Read a commit status object.
-
-        :param data: The object to read.
-        :return: The parsed status.
-        """
-        return cls(
-            CheckResult(
-                name=data[RestJSONKey.CONTEXT],
-                outcome=CheckOutcome[data[RestJSONKey.STATE].upper()],
-                url=data[RestJSONKey.TARGET_URL] or "",
-            )
+            [
+                CheckResult.from_check_run_json(run)
+                for run in data[RestJSONKey.CHECK_RUNS]
+            ]
         )
 
 
@@ -350,7 +350,7 @@ class RestCombinedStatusPage(JSONModel):
     posted at all, which would misreport a commit no status applies to.
     """
 
-    statuses: list[RestCommitStatus]
+    statuses: list[CheckResult]
     """
     The statuses on this page.
     """
@@ -365,7 +365,7 @@ class RestCombinedStatusPage(JSONModel):
         """
         return cls(
             [
-                RestCommitStatus.from_json(status)
+                CheckResult.from_commit_status_json(status)
                 for status in data[RestJSONKey.STATUSES]
             ]
         )

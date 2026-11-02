@@ -15,6 +15,7 @@ from basstler_domain_model.github.vocabulary import (
     JSONModel,
     PullRequestJSONKey,
     PullRequestState,
+    RestJSONKey,
     ReviewState,
     ThreadMarker,
 )
@@ -98,6 +99,22 @@ class ThreadComment(JSONModel):
             body=data[PullRequestJSONKey.BODY],
             created_at=data[PullRequestJSONKey.CREATED_AT],
             url=data[PullRequestJSONKey.URL],
+        )
+
+    @classmethod
+    def from_rest_json(cls, data: dict[str, Any]) -> ThreadComment:
+        """
+        Read a review comment as REST lists every comment on a pull request.
+
+        :param data: The comment object.
+        :return: The parsed comment.
+        """
+        return cls(
+            database_identifier=data[RestJSONKey.IDENTIFIER],
+            author=Author.from_json(data[RestJSONKey.USER]),
+            body=data[RestJSONKey.BODY],
+            created_at=data[RestJSONKey.CREATED_AT],
+            url=data[RestJSONKey.HTML_URL],
         )
 
 
@@ -211,6 +228,22 @@ class Review(JSONModel):
             state=ReviewState[data[PullRequestJSONKey.STATE]],
             body=data[PullRequestJSONKey.BODY],
             submitted_at=data[PullRequestJSONKey.SUBMITTED_AT],
+        )
+
+    @classmethod
+    def from_rest_json(cls, data: dict[str, Any]) -> Review:
+        """
+        Read a review as REST lists it, whose body and submission time are null until
+        submitted.
+
+        :param data: The review object.
+        :return: The parsed review.
+        """
+        return cls(
+            author=Author.from_json(data[RestJSONKey.USER]),
+            state=ReviewState[data[RestJSONKey.STATE]],
+            body=data[RestJSONKey.BODY] or "",
+            submitted_at=data[RestJSONKey.SUBMITTED_AT] or "",
         )
 
 

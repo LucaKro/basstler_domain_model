@@ -25,6 +25,8 @@ from basstler_domain_model.github.vocabulary import (
 )
 from basstler_domain_model.repository import Repository
 
+from .dataset.locations import DatasetLocation
+
 REPOSITORY = Repository("an-owner", "a-repository")
 """
 The repository every call in these tests is made against.
@@ -49,6 +51,20 @@ def answer(status: HTTPStatus, body: dict[str, object]) -> RecordedAnswer:
     :param body: The body to answer with.
     :return: The answer."""
     return RecordedAnswer(status, json.dumps(body))
+
+
+def recorded_repository() -> dict[str, object]:
+    """:return: The repository as REST describes it."""
+    return json.loads(DatasetLocation.REPOSITORY.read_text())
+
+
+def repository_answers() -> dict[tuple[str, str], RecordedAnswer]:
+    """:return: The repository's own path, answered with its recording."""
+    return {
+        ("GET", f"/{ROUTE.root}"): RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.REPOSITORY
+        )
+    }
 
 
 # %% opening a pull request
@@ -78,25 +94,19 @@ def test_a_draft_is_opened_from_the_head_onto_the_base():
 
 
 def test_the_default_branch_is_read_from_the_repository():
-    answers = {
-        ("GET", f"/{ROUTE.root}"): answer(
-            HTTPStatus.OK, {RestJSONKey.DEFAULT_BRANCH: "trunk"}
+    with ReplayedApi(repository_answers()) as api:
+        assert (
+            client(api).default_branch()
+            == recorded_repository()[RestJSONKey.DEFAULT_BRANCH]
         )
-    }
-
-    with ReplayedApi(answers) as api:
-        assert client(api).default_branch() == "trunk"
 
 
 def test_whether_merged_branches_are_deleted_is_read_from_the_repository():
-    answers = {
-        ("GET", f"/{ROUTE.root}"): answer(
-            HTTPStatus.OK, {RestJSONKey.DELETE_BRANCH_ON_MERGE: False}
+    with ReplayedApi(repository_answers()) as api:
+        assert (
+            client(api).deletes_merged_branches()
+            is recorded_repository()[RestJSONKey.DELETE_BRANCH_ON_MERGE]
         )
-    }
-
-    with ReplayedApi(answers) as api:
-        assert client(api).deletes_merged_branches() is False
 
 
 # %% changing settings
@@ -131,14 +141,11 @@ def test_a_refused_settings_change_is_reported_rather_than_raised():
 
 
 def test_whether_issues_are_on_is_read_from_the_repository():
-    answers = {
-        ("GET", f"/{ROUTE.root}"): answer(
-            HTTPStatus.OK, {RestJSONKey.HAS_ISSUES: False}
+    with ReplayedApi(repository_answers()) as api:
+        assert (
+            client(api).issues_enabled()
+            is recorded_repository()[RestJSONKey.HAS_ISSUES]
         )
-    }
-
-    with ReplayedApi(answers) as api:
-        assert client(api).issues_enabled() is False
 
 
 def test_turning_on_issues_asks_github_for_them():

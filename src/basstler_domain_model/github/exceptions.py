@@ -6,13 +6,8 @@ from __future__ import annotations
 
 from abc import ABC
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
 from basstler_domain_model.exceptions import DataclassException, ExternalCallFailed
 from basstler_domain_model.repository import Repository
-
-if TYPE_CHECKING:
-    from basstler_domain_model.github.pull_request_fields import PullRequestField
 
 # %% reading one pull request's review state
 
@@ -137,9 +132,9 @@ class MissingPullRequestFieldError(DataclassException, ValueError):
     indistinguishable from good.
     """
 
-    field_name: PullRequestField
+    field_name: str
     """
-    The field that was absent.
+    The key of the field that was absent.
     """
 
     pull_request_number: int | None
@@ -153,10 +148,7 @@ class MissingPullRequestFieldError(DataclassException, ValueError):
             if self.pull_request_number is not None
             else "a fetched pull request"
         )
-        return (
-            f"{subject} has no '{self.field_name}'; the board cannot be derived from a "
-            f"fetch that omits it"
-        )
+        return f"{subject} has no '{self.field_name}'"
 
     def suggest_correction(self) -> str:
         return ""

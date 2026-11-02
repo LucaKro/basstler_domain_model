@@ -18,12 +18,12 @@ from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.exceptions import NotAnIssueError
 from basstler_domain_model.github.issue_models import Issue
 from basstler_domain_model.github.labels import GitHubLabel
-from basstler_domain_model.github.pull_request_fields import PullRequestPayload
 from basstler_domain_model.github.routes import (
     QueryParameter,
     RepositoryRoute,
     StackAction,
 )
+from basstler_domain_model.github.rest_models import RestPullRequest, RestRepository
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (
     IssueState,
@@ -40,18 +40,18 @@ from basstler_domain_model.repository import Repository
 @dataclass(frozen=True)
 class PullRequestReader(ABC):
     """
-    Reading the pull-request state a pass derives from.
+    Reading a repository's pull requests.
 
     Implementations inherit rather than merely match the shape, so one that omits a read
     is refused when it is constructed rather than when the missing call is first made.
     """
 
     @abstractmethod
-    def open_pull_requests(self) -> list[PullRequestPayload]:
-        """:return: Every open pull request on the fork."""
+    def open_pull_requests(self) -> list[RestPullRequest]:
+        """:return: Every open pull request in the repository."""
 
     @abstractmethod
-    def pull_request(self, number: int) -> PullRequestPayload:
+    def pull_request(self, number: int) -> RestPullRequest:
         """:param number: The pull request to read.
         :return: That pull request."""
 
@@ -450,11 +450,11 @@ class GitHubRepository(
         """:return: The repository's paths."""
         return RepositoryRoute(self.repository)
 
-    def open_pull_requests(self) -> list[PullRequestPayload]:
+    def open_pull_requests(self) -> list[RestPullRequest]:
         """:return: Every open pull request on the repository, oldest page first."""
         return self._pull_requests_in_state(PullRequestListState.OPEN)
 
-    def all_pull_requests(self) -> list[PullRequestPayload]:
+    def all_pull_requests(self) -> list[RestPullRequest]:
         """:return: Every pull request on the repository, open or closed."""
         return self._pull_requests_in_state(PullRequestListState.ALL)
 
@@ -466,16 +466,17 @@ class GitHubRepository(
 
     def _pull_requests_in_state(
         self, state: PullRequestListState
-    ) -> list[PullRequestPayload]:
+    ) -> list[RestPullRequest]:
         """
         :param state: Which pull requests to list.
         :return: Them, oldest page first.
         """
-        return self._every_entry(
-            self.route.listing(
-                self.route.pull_requests, {QueryParameter.STATE: state.query}
-            )
+        listing = self.route.listing(
+            self.route.pull_requests, {QueryParameter.STATE: state.query}
         )
+        return [
+            RestPullRequest.from_json(entry) for entry in self._every_entry(listing)
+        ]
 
     def labels(self) -> set[str]:
         return {
@@ -504,10 +505,8 @@ class GitHubRepository(
         """
         return [entry for page in self.api.get_pages(listing) for entry in page]
 
-    def pull_request(self, number: int) -> PullRequestPayload:
-        """:param number: The pull request to read.
-        :return: That pull request."""
-        return self.api.get(self.route.pull_request(number))
+    def pull_request(self, number: int) -> RestPullRequest:
+        return RestPullRequest.from_json(self.api.get(self.route.pull_request(number)))
 
     def replace_labels(self, number: int, labels: Sequence[str]) -> None:
         """
@@ -564,10 +563,12 @@ class GitHubRepository(
         return int(created[RestJSONKey.NUMBER])
 
     def default_branch(self) -> str:
-        return str(self.api.get(self.route.root)[RestJSONKey.DEFAULT_BRANCH])
+        return RestRepository.from_json(self.api.get(self.route.root)).default_branch
 
     def deletes_merged_branches(self) -> bool:
-        return bool(self.api.get(self.route.root)[RestJSONKey.DELETE_BRANCH_ON_MERGE])
+        return RestRepository.from_json(
+            self.api.get(self.route.root)
+        ).deletes_merged_branches
 
     def turn_on_merged_branch_deletion(self) -> bool:
         return self.api.attempt(
@@ -575,7 +576,7 @@ class GitHubRepository(
         ).succeeded
 
     def issues_enabled(self) -> bool:
-        return bool(self.api.get(self.route.root)[RestJSONKey.HAS_ISSUES])
+        return RestRepository.from_json(self.api.get(self.route.root)).issues_enabled
 
     def turn_on_issues(self) -> bool:
         return self.api.attempt(

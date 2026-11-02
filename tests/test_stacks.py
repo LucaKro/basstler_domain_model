@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 from http import HTTPStatus
 
-from basstler_domain_model.github.pull_request_fields import PullRequestHeadKey
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import GitHubRepository
@@ -69,7 +68,7 @@ def test_a_stack_names_the_branch_the_one_above_targets():
     stack = recorded_stack(DatasetLocation.STACK_GROWN)
 
     assert [entry.branch for entry in stack.pull_requests][:-1] == [
-        entry[RestJSONKey.BASE][PullRequestHeadKey.REFERENCE]
+        entry[RestJSONKey.BASE][RestJSONKey.REFERENCE]
         for entry in recorded(DatasetLocation.STACK_GROWN)[RestJSONKey.PULL_REQUESTS]
     ][1:]
 

@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from basstler_domain_model.github.rest_models import RestPullRequestSummary
+from basstler_domain_model.github.rest_models import RestPullRequest
 from basstler_domain_model.github.review_models import BranchPullRequest
 from basstler_domain_model.github.vocabulary import PullRequestState
 
@@ -43,6 +43,6 @@ def test_rest_tells_merged_from_closed_by_the_merge_time(
     """
     REST reports both as closed, so only the merge time tells them apart.
     """
-    summary = RestPullRequestSummary.from_json(json.loads(payload.read_text()))
+    pull_request = RestPullRequest.from_json(json.loads(payload.read_text()))
 
-    assert summary.branch_pull_request.state is state
+    assert pull_request.branch_pull_request.state is state

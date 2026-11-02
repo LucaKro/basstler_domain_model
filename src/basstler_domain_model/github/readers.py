@@ -27,15 +27,14 @@ from basstler_domain_model.github.pull_request_models import (
     UpstreamPullRequestSnapshot,
 )
 from basstler_domain_model.github.rest_models import (
-    RestPullRequestSummary,
-    RestReview,
-    RestReviewComment,
+    RestPullRequest,
     RestReviewThread,
 )
 from basstler_domain_model.github.review_models import (
     BranchPullRequest,
     Review,
     ReviewThread,
+    ThreadComment,
 )
 from basstler_domain_model.github.vocabulary import (
     GraphQLDocument,
@@ -218,7 +217,7 @@ class RestPullRequestReader(PullRequestSource):
         return self.choose(
             branch,
             [
-                RestPullRequestSummary.from_json(entry).branch_pull_request
+                RestPullRequest.from_json(entry).branch_pull_request
                 for page in pages
                 for entry in page
             ],
@@ -230,7 +229,7 @@ class RestPullRequestReader(PullRequestSource):
         """
         See :meth:`PullRequestSource.read_current_state`.
         """
-        pull_request = RestPullRequestSummary.from_json(
+        pull_request = RestPullRequest.from_json(
             self.client.get(self.route.pull_request(pull_request_number))
         )
         return UpstreamPullRequestSnapshot(
@@ -240,7 +239,7 @@ class RestPullRequestReader(PullRequestSource):
             reviews=self._reviews(pull_request_number),
             threads=self._threads(pull_request_number),
             checks=CommitCheckReader(self.client, self.route).checks(
-                pull_request.head.sha
+                pull_request.head.commit
             ),
         )
 
@@ -250,7 +249,7 @@ class RestPullRequestReader(PullRequestSource):
         :return: Every submitted review, oldest first.
         """
         return [
-            RestReview.from_json(entry).review
+            Review.from_rest_json(entry)
             for page in self.client.get_pages(self.route.reviews(pull_request_number))
             for entry in page
         ]
@@ -265,7 +264,7 @@ class RestPullRequestReader(PullRequestSource):
         comments = {
             comment.database_identifier: comment
             for comment in (
-                RestReviewComment.from_json(entry).comment
+                ThreadComment.from_rest_json(entry)
                 for page in self.client.get_pages(
                     self.route.review_comments(pull_request_number)
                 )

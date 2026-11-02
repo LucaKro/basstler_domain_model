@@ -14,11 +14,15 @@ import pytest
 
 from basstler_domain_model.github.clients import GraphQLClient, RestClient
 from basstler_domain_model.github.commit_checks import CommitCheckReader
-from basstler_domain_model.github.exceptions import UpstreamPullRequestNotFound
+from basstler_domain_model.github.exceptions import (
+    ReviewThreadWithoutCommentsError,
+    UpstreamPullRequestNotFound,
+)
 from basstler_domain_model.github.readers import (
     RestPullRequestReader,
     UpstreamPullRequestReader,
 )
+from basstler_domain_model.github.rest_models import RestReviewThread
 from basstler_domain_model.github.routes import RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
     CheckOutcome,
@@ -257,6 +261,13 @@ def test_a_rest_thread_is_filled_in_with_its_comments(
     assert [
         comment.database_identifier for comment in snapshot.threads[0].comments
     ] == thread[RestJSONKey.COMMENT_IDENTIFIERS]
+
+
+def test_a_rest_thread_without_comments_is_refused() -> None:
+    with pytest.raises(ReviewThreadWithoutCommentsError):
+        RestReviewThread.from_json(
+            recorded(DatasetLocation.REST_REVIEW_THREAD_WITHOUT_COMMENTS)
+        )
 
 
 def test_a_rest_read_carries_the_head_commit_s_checks(

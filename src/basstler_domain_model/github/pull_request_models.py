@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from basstler_domain_model.github.exceptions import (
+    GraphQLDataMissingError,
     GraphQLErrorsReturned,
 )
 from basstler_domain_model.github.review_models import (
@@ -446,10 +447,13 @@ class GraphQLResponse:
         )
 
     def result(self) -> dict[str, Any]:
-        """:return: The query's result.
-
+        """
+        :return: The query's result.
         :raises GraphQLErrorsReturned: If GitHub reported errors instead.
+        :raises GraphQLDataMissingError: If GitHub reported neither data nor errors.
         """
         if self.errors:
             raise GraphQLErrorsReturned(self.errors)
-        return self.data or {}
+        if self.data is None:
+            raise GraphQLDataMissingError()
+        return self.data

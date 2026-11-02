@@ -210,6 +210,41 @@ def test_creating_a_branch_that_exists_is_refused(checkout: GitCommandRunner):
         checkout.create_branch("main", "main")
 
 
+def test_a_branch_not_checked_out_is_fast_forwarded(checkout: GitCommandRunner):
+    commit_on(checkout, "ahead", "main", "ahead.txt")
+    checkout.create_branch("feature", "ahead")
+
+    moved = checkout.fast_forward_branch("main", "ahead")
+
+    assert moved.succeeded
+    assert checkout.commit_at("main") == checkout.commit_at("ahead")
+
+
+def test_a_branch_with_commits_the_reference_lacks_is_not_moved(
+    checkout: GitCommandRunner,
+):
+    commit_on(checkout, "ahead", "main", "ahead.txt")
+    commit_on(checkout, "diverged", "main", "own.txt")
+    before = checkout.commit_at("diverged")
+    checkout.switch_to("ahead")
+
+    moved = checkout.fast_forward_branch("diverged", "ahead")
+
+    assert not moved.succeeded
+    assert checkout.commit_at("diverged") == before
+
+
+def test_the_checked_out_branch_is_not_moved(checkout: GitCommandRunner):
+    commit_on(checkout, "ahead", "main", "ahead.txt")
+    checkout.switch_to("main")
+    before = checkout.commit_at("main")
+
+    moved = checkout.fast_forward_branch("main", "ahead")
+
+    assert not moved.succeeded
+    assert checkout.commit_at("main") == before
+
+
 def test_switching_checks_the_branch_out(checkout: GitCommandRunner):
     commit_on(checkout, "feature", "main", "feature.txt")
 

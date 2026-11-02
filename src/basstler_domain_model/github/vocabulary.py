@@ -457,6 +457,25 @@ class IssueState(StrEnum):
     """
 
 
+class ClosingKeyword(StrEnum):
+    """
+    A word that, written before an issue's number in a pull request's description,
+    closes the issue when the pull request is merged.
+    """
+
+    FIXES = "Fixes"
+    """
+    Closes an issue that reports a bug.
+    """
+
+    def reference(self, number: int) -> str:
+        """
+        :param number: An issue.
+        :return: The keyword and the issue, as a description writes them.
+        """
+        return f"{self} #{number}"
+
+
 class IssueStateReason(StrEnum):
     """
     Why an issue was closed or reopened.

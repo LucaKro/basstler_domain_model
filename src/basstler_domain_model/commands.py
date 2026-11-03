@@ -80,24 +80,25 @@ class CommandRunner:
 
     def run(
         self,
+        program: str,
         *arguments: str,
         standard_input: str | None = None,
         environment: Mapping[str, str] | None = None,
     ) -> CommandResult:
         """
-        :param arguments: The command and its arguments.
+        :param program: The program to run.
+        :param arguments: Its arguments.
         :param standard_input: What to write to its standard input, if anything.
         :param environment: Variables to set for this command on top of the process's
             own.
         :return: The finished command.
         """
-        if shutil.which(arguments[0]) is None:
-            return CommandResult(
-                arguments, None, "", f"{arguments[0]} is not installed", 0.0
-            )
+        command = (program, *arguments)
+        if shutil.which(program) is None:
+            return CommandResult(command, None, "", f"{program} is not installed", 0.0)
         started = time.monotonic()
         completed = subprocess.run(
-            arguments,
+            command,
             cwd=self.working_directory,
             input=standard_input,
             env={**os.environ, **(environment or {})},
@@ -105,7 +106,7 @@ class CommandRunner:
             text=True,
         )
         return CommandResult(
-            arguments,
+            command,
             completed.returncode,
             completed.stdout.strip(),
             completed.stderr.strip(),

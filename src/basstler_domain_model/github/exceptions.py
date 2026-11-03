@@ -42,6 +42,44 @@ class GraphQLErrorsReturned(PullRequestReadError):
 
 
 @dataclass
+class GraphQLDataMissingError(PullRequestReadError):
+    """
+    Raised when GitHub answers a query with neither data nor errors.
+    """
+
+    def error_message(self) -> str:
+        return "GitHub answered the query with neither data nor errors"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Run the query again; if it keeps coming back empty, check GitHub's status."
+        )
+
+
+@dataclass
+class ReviewThreadWithoutCommentsError(PullRequestReadError, ValueError):
+    """
+    Raised when GitHub lists a review thread that names no comments.
+    """
+
+    path: str
+    """
+    The file the thread is attached to.
+    """
+
+    line: int | None
+    """
+    The line the thread is attached to, ``None`` once its hunk is outdated.
+    """
+
+    def error_message(self) -> str:
+        return f"the review thread on {self.path}:{self.line} names no comments"
+
+    def suggest_correction(self) -> str:
+        return "Read the pull request's review threads again."
+
+
+@dataclass
 class UpstreamPullRequestNotFound(PullRequestReadError):
     """
     Raised when a branch has no pull request open on the upstream.
@@ -100,6 +138,19 @@ class UnrecognisedGitHubValueError(DataclassException, ValueError):
 
     def suggest_correction(self) -> str:
         return f"Add {self.value!r} to {self.vocabulary.__name__}, with what it means."
+
+
+@dataclass
+class NoCheckOutcomesError(DataclassException, ValueError):
+    """
+    Raised when a verdict is asked for over no checks at all.
+    """
+
+    def error_message(self) -> str:
+        return "a verdict needs at least one check's outcome"
+
+    def suggest_correction(self) -> str:
+        return "Report no verdict when no check has reported."
 
 
 # %% calling the REST API with a token

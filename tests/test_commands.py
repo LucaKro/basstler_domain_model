@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import sys
 
+import pytest
+
 from basstler_domain_model.commands import CommandRunner
 
 # %% running
@@ -33,3 +35,8 @@ def test_a_command_that_is_not_installed_comes_back_as_a_result(tmp_path):
 
     assert not result.succeeded
     assert result.exit_status is None
+
+
+def test_a_command_cannot_be_run_without_a_program(tmp_path) -> None:
+    with pytest.raises(TypeError):
+        CommandRunner(tmp_path).run()

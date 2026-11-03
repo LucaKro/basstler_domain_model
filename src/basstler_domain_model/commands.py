@@ -28,7 +28,8 @@ class CommandResult:
 
     exit_status: int | None
     """
-    The status it exited with, ``None`` when the command is not installed.
+    The status it exited with, ``None`` when it did not finish: the command is not
+    installed, or ran out of time.
     """
 
     standard_output: str
@@ -89,6 +90,7 @@ class CommandRunner:
         *arguments: str,
         standard_input: str | None = None,
         environment: Mapping[str, str] | None = None,
+        timeout_seconds: float = 600.0,
     ) -> CommandResult:
         """
         :param program: The program to run.
@@ -96,20 +98,31 @@ class CommandRunner:
         :param standard_input: What to write to its standard input, if anything.
         :param environment: Variables to set for this command on top of the process's
             own.
+        :param timeout_seconds: How long the command may run before it is stopped.
         :return: The finished command.
         """
         command = (program, *arguments)
         if shutil.which(program) is None:
             return CommandResult(command, None, "", f"{program} is not installed", 0.0)
         started = time.monotonic()
-        completed = subprocess.run(
-            command,
-            cwd=self.working_directory,
-            input=standard_input,
-            env={**os.environ, **(environment or {})},
-            capture_output=True,
-            text=True,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.working_directory,
+                input=standard_input,
+                env={**os.environ, **(environment or {})},
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            return CommandResult(
+                command,
+                None,
+                "",
+                f"{program} did not finish within {timeout_seconds} seconds",
+                round(time.monotonic() - started, 2),
+            )
         return CommandResult(
             command,
             completed.returncode,

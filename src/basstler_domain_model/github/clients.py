@@ -262,6 +262,11 @@ class GitHubApi(GraphQLClient, RestApi, JobLogReader):
     Where the API answers.
     """
 
+    timeout_seconds: float = 30.0
+    """
+    How long a call may wait on the API before it fails.
+    """
+
     @classmethod
     def from_environment(cls) -> GitHubApi:
         """
@@ -359,6 +364,7 @@ class GitHubApi(GraphQLClient, RestApi, JobLogReader):
         :param payload: The JSON body, absent for a read.
         :param authorized: Whether the token goes with the call.
         :return: What came back, a refusal or a redirect included.
+        :raises GitHubRequestFailed: If no answer came back.
         """
         headers = {
             "Accept": "application/vnd.github+json",
@@ -374,7 +380,7 @@ class GitHubApi(GraphQLClient, RestApi, JobLogReader):
         )
         opener = urllib.request.build_opener(NoAutomaticRedirect())
         try:
-            with opener.open(request) as response:
+            with opener.open(request, timeout=self.timeout_seconds) as response:
                 return RestAnswer(
                     response.status,
                     response.read().decode(errors="replace"),
@@ -389,3 +395,10 @@ class GitHubApi(GraphQLClient, RestApi, JobLogReader):
                     for name, value in (refused.headers or {}).items()
                 },
             )
+        except (urllib.error.URLError, TimeoutError) as unanswered:
+            raise GitHubRequestFailed(
+                status=None,
+                detail=str(unanswered),
+                method=method,
+                path=address,
+            ) from unanswered

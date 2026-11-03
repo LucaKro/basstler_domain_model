@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import StrEnum
 from pathlib import Path
 
@@ -20,6 +20,7 @@ from basstler_domain_model.environment import GitVariable
 from basstler_domain_model.repository import Repository
 from basstler_domain_model.git.exceptions import (
     GitCommandFailed,
+    MalformedReferenceUpdateError,
     UnresolvableReferenceError,
 )
 
@@ -173,6 +174,50 @@ class ProposedPush:
     """
     Whether the local branch published then tracks the branch it was published to.
     """
+
+
+# %% what a push changes
+
+
+@dataclass(frozen=True)
+class ReferenceUpdate:
+    """
+    One reference a push is about to change, as git describes it to a ``pre-push``
+    hook.
+    """
+
+    local_reference: str
+    """
+    The local reference pushed, ``(delete)`` when the push deletes the remote one.
+    """
+
+    local_commit: str
+    """
+    The commit pushed, all zeros when the push deletes.
+    """
+
+    remote_reference: str
+    """
+    The reference on the remote that the push changes.
+    """
+
+    remote_commit: str
+    """
+    The commit the remote reference is at, all zeros when it does not exist yet.
+    """
+
+    @classmethod
+    def from_line(cls, line: str) -> ReferenceUpdate:
+        """
+        :param line: One line of a ``pre-push`` hook's input.
+        :return: The update it describes.
+        :raises MalformedReferenceUpdateError: If the line does not hold one field per
+            attribute.
+        """
+        words = line.split()
+        if len(words) != len(fields(cls)):
+            raise MalformedReferenceUpdateError(line)
+        return cls(*words)
 
 
 @dataclass(frozen=True)

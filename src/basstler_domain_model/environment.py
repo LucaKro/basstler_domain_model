@@ -121,6 +121,11 @@ class ClaudeCodeVariable(EnvironmentVariable):
     The bash Claude Code runs its commands in on Windows, when set.
     """
 
+    COMMAND_MARKER = "CLAUDECODE"
+    """
+    ``1`` in every command Claude Code runs, and unset in a person's own terminal.
+    """
+
 
 # %% git
 

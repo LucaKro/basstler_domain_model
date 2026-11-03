@@ -60,7 +60,7 @@ class GitCommandResult(CommandResult):
         return cls(
             result.arguments,
             result.exit_status,
-            result.output,
+            result.standard_output,
             result.error_output,
             result.seconds,
         )

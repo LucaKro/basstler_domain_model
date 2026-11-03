@@ -17,6 +17,7 @@ from basstler_domain_model.git.commands import (
     RemoteBranch,
     RemoteName,
 )
+from basstler_domain_model.git.exceptions import StorageBranchWriteConflict
 from basstler_domain_model.git.storage_branch import StorageBranch
 
 # %% fixtures
@@ -73,7 +74,7 @@ def test_the_first_write_creates_the_branch_with_the_file(remote, tmp_path):
     reader = storage(remote, tmp_path, "reader")
 
     assert reader.fetch() is True
-    assert reader.read(Path("file.md")) == "text"
+    assert reader.read(Path("file.md")) == "text\n"
 
 
 def test_a_write_leaves_the_files_it_does_not_write_alone(remote, tmp_path):
@@ -82,8 +83,8 @@ def test_a_write_leaves_the_files_it_does_not_write_alone(remote, tmp_path):
 
     branch.write({Path("two.md"): "two\n"}, "Write")
 
-    assert branch.read(Path("one.md")) == "one"
-    assert branch.read(Path("two.md")) == "two"
+    assert branch.read(Path("one.md")) == "one\n"
+    assert branch.read(Path("two.md")) == "two\n"
 
 
 def test_a_writer_behind_another_keeps_both_writes(remote, tmp_path):
@@ -99,8 +100,30 @@ def test_a_writer_behind_another_keeps_both_writes(remote, tmp_path):
 
     second.write({Path("three.md"): "three\n"}, "Write")
 
-    assert second.read(Path("two.md")) == "two"
-    assert second.read(Path("three.md")) == "three"
+    assert second.read(Path("two.md")) == "two\n"
+    assert second.read(Path("three.md")) == "three\n"
+
+
+def test_a_file_is_read_back_exactly_as_written(remote: Path, tmp_path: Path) -> None:
+    text = "line\n\n  "
+    branch = storage(remote, tmp_path, "writer")
+
+    branch.write({Path("file.md"): text}, "Write")
+
+    assert branch.read(Path("file.md")) == text
+
+
+def test_a_writer_behind_another_on_the_same_file_is_refused(
+    remote: Path, tmp_path: Path
+) -> None:
+    first = storage(remote, tmp_path, "first")
+    second = storage(remote, tmp_path, "second")
+    first.write({Path("one.md"): "one\n"}, "Write")
+    second.fetch()
+    first.write({Path("one.md"): "changed\n"}, "Write")
+
+    with pytest.raises(StorageBranchWriteConflict):
+        second.write({Path("one.md"): "overwritten\n"}, "Write")
 
 
 def test_a_write_leaves_the_checkout_untouched(remote, tmp_path):

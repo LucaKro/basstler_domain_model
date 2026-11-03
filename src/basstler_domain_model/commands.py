@@ -31,9 +31,9 @@ class CommandResult:
     The status it exited with, ``None`` when the command is not installed.
     """
 
-    output: str
+    standard_output: str
     """
-    Its stripped standard output.
+    Its standard output, exactly as written.
     """
 
     error_output: str
@@ -45,6 +45,11 @@ class CommandResult:
     """
     How long it ran.
     """
+
+    @property
+    def output(self) -> str:
+        """:return: Its standard output, stripped."""
+        return self.standard_output.strip()
 
     @property
     def succeeded(self) -> bool:
@@ -108,7 +113,7 @@ class CommandRunner:
         return CommandResult(
             command,
             completed.returncode,
-            completed.stdout.strip(),
+            completed.stdout,
             completed.stderr.strip(),
             round(time.monotonic() - started, 2),
         )

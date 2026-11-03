@@ -10,10 +10,14 @@ from pathlib import Path
 import pytest
 
 from basstler_domain_model.environment import GitIdentityVariable, GitVariable
-from basstler_domain_model.git.exceptions import GitCommandFailed
+from basstler_domain_model.git.exceptions import (
+    GitCommandFailed,
+    MalformedReferenceUpdateError,
+)
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
     ProposedPush,
+    ReferenceUpdate,
     RemoteBranch,
     RemoteName,
 )
@@ -504,3 +508,22 @@ def test_git_never_prompts_on_the_terminal(tmp_path: Path) -> None:
     assert (
         prompt == GitCommandRunner.unattended_environment[GitVariable.TERMINAL_PROMPT]
     )
+
+
+# %% what a push changes
+
+
+def test_a_pre_push_line_reads_as_the_update_it_describes():
+    pushed, published = "1" * 40, "2" * 40
+    line = f"refs/heads/work {pushed} refs/heads/main {published}"
+
+    update = ReferenceUpdate.from_line(line)
+
+    assert update == ReferenceUpdate(
+        "refs/heads/work", pushed, "refs/heads/main", published
+    )
+
+
+def test_a_pre_push_line_missing_a_field_is_refused():
+    with pytest.raises(MalformedReferenceUpdateError):
+        ReferenceUpdate.from_line(f"refs/heads/work {'1' * 40} refs/heads/main")

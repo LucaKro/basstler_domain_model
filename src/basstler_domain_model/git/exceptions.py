@@ -51,6 +51,28 @@ class UnresolvableReferenceError(DataclassException, LookupError):
 
 
 @dataclass
+class MalformedReferenceUpdateError(DataclassException, ValueError):
+    """
+    Raised when a line handed to a ``pre-push`` hook does not describe one reference
+    update.
+    """
+
+    line: str
+    """
+    The line as git handed it.
+    """
+
+    def error_message(self) -> str:
+        return (
+            f"'{self.line}' is not a reference update, which git writes as a local "
+            f"reference, its commit, a remote reference and its commit"
+        )
+
+    def suggest_correction(self) -> str:
+        return "Hand the hook only the lines git writes to its input."
+
+
+@dataclass
 class StorageBranchPushRefused(DataclassException, RuntimeError):
     """
     Raised when a storage branch refuses a push even after building on its newest tip.

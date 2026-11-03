@@ -15,6 +15,7 @@ import pytest
 from basstler_domain_model.github.clients import GitHubApi
 from basstler_domain_model.github.exceptions import (
     GitHubRequestFailed,
+    GraphQLDataMissingError,
     GraphQLErrorsReturned,
 )
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
@@ -230,6 +231,18 @@ def test_graphql_errors_are_raised_rather_than_returned():
     assert raised.value.messages == [
         error[PullRequestJSONKey.MESSAGE] for error in recorded
     ]
+
+
+def test_a_graphql_answer_with_neither_data_nor_errors_is_refused():
+    answers = {
+        ("POST", "/graphql"): RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.GRAPHQL_NO_DATA
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        with pytest.raises(GraphQLDataMissingError):
+            GitHubApi(TOKEN, api.url).execute("query {}", {})
 
 
 # %% job logs

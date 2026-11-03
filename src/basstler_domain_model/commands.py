@@ -81,27 +81,28 @@ class CommandRunner:
 
     def run(
         self,
+        program: str,
         *arguments: str,
         standard_input: str | None = None,
         environment: Mapping[str, str] | None = None,
         timeout_seconds: float = 600.0,
     ) -> CommandResult:
         """
-        :param arguments: The command and its arguments.
+        :param program: The program to run.
+        :param arguments: Its arguments.
         :param standard_input: What to write to its standard input, if anything.
         :param environment: Variables to set for this command on top of the process's
             own.
         :param timeout_seconds: How long the command may run before it is stopped.
         :return: The finished command.
         """
-        if shutil.which(arguments[0]) is None:
-            return CommandResult(
-                arguments, None, "", f"{arguments[0]} is not installed", 0.0
-            )
+        command = (program, *arguments)
+        if shutil.which(program) is None:
+            return CommandResult(command, None, "", f"{program} is not installed", 0.0)
         started = time.monotonic()
         try:
             completed = subprocess.run(
-                arguments,
+                command,
                 cwd=self.working_directory,
                 input=standard_input,
                 env={**os.environ, **(environment or {})},
@@ -111,14 +112,14 @@ class CommandRunner:
             )
         except subprocess.TimeoutExpired:
             return CommandResult(
-                arguments,
+                command,
                 None,
                 "",
-                f"{arguments[0]} did not finish within {timeout_seconds} seconds",
+                f"{program} did not finish within {timeout_seconds} seconds",
                 round(time.monotonic() - started, 2),
             )
         return CommandResult(
-            arguments,
+            command,
             completed.returncode,
             completed.stdout.strip(),
             completed.stderr.strip(),

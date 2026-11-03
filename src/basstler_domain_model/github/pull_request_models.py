@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from basstler_domain_model.github.exceptions import (
+    GraphQLDataMissingError,
     GraphQLErrorsReturned,
 )
 from basstler_domain_model.github.review_models import (
@@ -346,19 +347,6 @@ class UpstreamPullRequestSnapshot:
         """:return: The threads still awaiting action."""
         return [thread for thread in self.threads if not thread.is_resolved]
 
-    def thread(self, identifier: str) -> ReviewThread:
-        """
-        Look one thread up by its node identifier.
-
-        :param identifier: The thread's node identifier.
-        :return: The matching thread.
-        :raises KeyError: If no thread carries that identifier.
-        """
-        for thread in self.threads:
-            if thread.identifier == identifier:
-                return thread
-        raise KeyError(identifier)
-
 
 @dataclass(frozen=True)
 class PullRequestForBranchResult(JSONModel):
@@ -446,10 +434,13 @@ class GraphQLResponse:
         )
 
     def result(self) -> dict[str, Any]:
-        """:return: The query's result.
-
+        """
+        :return: The query's result.
         :raises GraphQLErrorsReturned: If GitHub reported errors instead.
+        :raises GraphQLDataMissingError: If GitHub reported neither data nor errors.
         """
         if self.errors:
             raise GraphQLErrorsReturned(self.errors)
-        return self.data or {}
+        if self.data is None:
+            raise GraphQLDataMissingError()
+        return self.data

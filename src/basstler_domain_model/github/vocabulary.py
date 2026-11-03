@@ -9,7 +9,10 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Any, Self, TypeVar
 
-from basstler_domain_model.github.exceptions import UnrecognisedGitHubValueError
+from basstler_domain_model.github.exceptions import (
+    NoCheckOutcomesError,
+    UnrecognisedGitHubValueError,
+)
 from basstler_domain_model.locations import PackageLocation
 
 # %% the reading contract
@@ -384,9 +387,12 @@ class RollupState(GitHubVocabulary):
         Compute the verdict GitHub would over a set of checks, for a source that does
         not report one: the worst any single check would give.
 
-        :param outcomes: Every check's outcome, at least one.
+        :param outcomes: Every check's outcome.
         :return: The verdict.
+        :raises NoCheckOutcomesError: If *outcomes* is empty.
         """
+        if not outcomes:
+            raise NoCheckOutcomesError()
         reached = {outcome.rolls_up_to for outcome in outcomes}
         return next(state for state in cls.severity_order() if state in reached)
 

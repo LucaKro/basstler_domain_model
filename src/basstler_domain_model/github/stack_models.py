@@ -111,8 +111,3 @@ class Stack(JSONModel):
     def numbers(self) -> list[int]:
         """:return: Its pull requests' numbers, bottom first."""
         return [pull_request.number for pull_request in self.pull_requests]
-
-    @property
-    def top(self) -> StackedPullRequest:
-        """:return: The pull request no other in the stack builds on."""
-        return self.pull_requests[-1]

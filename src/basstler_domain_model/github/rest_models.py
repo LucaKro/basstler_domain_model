@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from basstler_domain_model.class_property import classproperty
-from basstler_domain_model.github.exceptions import MissingPullRequestFieldError
+from basstler_domain_model.github.exceptions import (
+    MissingPullRequestFieldError,
+    ReviewThreadWithoutCommentsError,
+)
 from basstler_domain_model.github.pull_request_models import CheckResult
 from basstler_domain_model.github.review_models import (
     Author,
@@ -271,6 +274,13 @@ class RestReviewThread(JSONModel):
     """
     The comments in the thread, oldest first.
     """
+
+    def __post_init__(self) -> None:
+        """
+        :raises ReviewThreadWithoutCommentsError: If the thread names no comments.
+        """
+        if not self.comment_identifiers:
+            raise ReviewThreadWithoutCommentsError(self.path, self.line)
 
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> RestReviewThread:

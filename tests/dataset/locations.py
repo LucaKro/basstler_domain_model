@@ -78,6 +78,11 @@ class DatasetLocation(PathEnumeration):
     A GraphQL answer carrying data.
     """
 
+    GRAPHQL_NO_DATA = DIRECTORY / "api" / "graphql-no-data.json"
+    """
+    A GraphQL response with neither data nor errors.
+    """
+
     GRAPHQL_ERRORS = DIRECTORY / "api" / "graphql-errors.json"
     """
     A GraphQL answer carrying errors instead of data.
@@ -177,6 +182,13 @@ class DatasetLocation(PathEnumeration):
     REST_REVIEW_THREADS = DIRECTORY / "readers" / "rest" / "review-threads.json"
     """
     Its review threads, naming their comments.
+    """
+
+    REST_REVIEW_THREAD_WITHOUT_COMMENTS = (
+        DIRECTORY / "readers" / "rest" / "review-thread-without-comments.json"
+    )
+    """
+    A review thread naming no comments.
     """
 
     REST_CHECK_RUNS = DIRECTORY / "readers" / "rest" / "check-runs.json"

@@ -272,7 +272,7 @@ class RepositorySettings(ABC):
 @dataclass(frozen=True)
 class IssueBoard(LabelWriter, Commenter, ABC):
     """
-    Filing, listing, labelling and closing a repository's issues.
+    Filing, listing, labelling, rewriting and closing a repository's issues.
     """
 
     @abstractmethod
@@ -330,6 +330,24 @@ class IssueBoard(LabelWriter, Commenter, ABC):
         """
         :param number: The issue to close.
         :param reason: Why it is closed.
+        """
+
+    @abstractmethod
+    def set_issue_title(self, number: int, title: str) -> None:
+        """
+        Rewrite an issue's title and nothing else.
+
+        :param number: The issue to write.
+        :param title: The new title.
+        """
+
+    @abstractmethod
+    def set_issue_description(self, number: int, body: str) -> None:
+        """
+        Rewrite an issue's description and nothing else.
+
+        :param number: The issue to write.
+        :param body: The new description.
         """
 
 
@@ -663,6 +681,12 @@ class GitHubRepository(
             self.route.issue(number),
             {RestJSONKey.STATE: IssueState.CLOSED, RestJSONKey.STATE_REASON: reason},
         )
+
+    def set_issue_title(self, number: int, title: str) -> None:
+        self.api.request("PATCH", self.route.issue(number), {RestJSONKey.TITLE: title})
+
+    def set_issue_description(self, number: int, body: str) -> None:
+        self.api.request("PATCH", self.route.issue(number), {RestJSONKey.BODY: body})
 
     def awaiting_my_review(self) -> int:
         found = self.api.get(self.route.review_requests())

@@ -23,7 +23,11 @@ from basstler_domain_model.github.routes import (
     RepositoryRoute,
     StackAction,
 )
-from basstler_domain_model.github.rest_models import RestPullRequest, RestRepository
+from basstler_domain_model.github.rest_models import (
+    BranchComparison,
+    RestPullRequest,
+    RestRepository,
+)
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (
     IssueState,
@@ -214,6 +218,31 @@ class ForkDetails(ABC):
     def upstream(self) -> Repository | None:
         """
         :return: The repository it was forked from, ``None`` when it is no fork.
+        """
+
+
+@dataclass(frozen=True)
+class ForkSync(ABC):
+    """
+    Comparing a fork's branch with its upstream's, and bringing it up to theirs.
+    """
+
+    @abstractmethod
+    def compare(self, base: str, head: str) -> BranchComparison:
+        """
+        :param base: A branch of this repository.
+        :param head: The branch compared with it, as ``owner:name:branch`` for another
+            repository's.
+        :return: How far *head* is ahead of and behind *base*.
+        """
+
+    @abstractmethod
+    def sync_with_upstream(self, branch: str) -> None:
+        """
+        Bring a branch of this fork up to the same branch of its upstream, as GitHub's
+        *Sync fork* does.
+
+        :param branch: The fork's branch.
         """
 
 
@@ -487,6 +516,7 @@ class PullRequestListState(PullRequestListingSpecification, Enum):
 class GitHubRepository(
     ForkPullRequests,
     ForkDetails,
+    ForkSync,
     PullRequestsFromForks,
     PullRequestBaseWriter,
     PullRequestOpener,
@@ -654,6 +684,16 @@ class GitHubRepository(
 
     def upstream(self) -> Repository | None:
         return RestRepository.from_json(self.api.get(self.route.root)).upstream
+
+    def compare(self, base: str, head: str) -> BranchComparison:
+        return BranchComparison.from_json(
+            self.api.get(self.route.comparison(base, head))
+        )
+
+    def sync_with_upstream(self, branch: str) -> None:
+        self.api.request(
+            "POST", self.route.merge_upstream, {RestJSONKey.BRANCH: branch}
+        )
 
     def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
         return [

@@ -20,6 +20,7 @@ from basstler_domain_model.github.issue_models import Issue, IssueComment
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import GitHubRepository
+from basstler_domain_model.github.rest_models import BranchComparison
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
@@ -127,6 +128,38 @@ def test_the_pull_requests_from_a_fork_s_branch_are_listed():
     assert [pull_request.number for pull_request in found] == [
         recorded[RestJSONKey.NUMBER]
     ]
+
+
+def test_a_branch_is_compared_with_another_repository_s_branch():
+    compared = ROUTE.comparison("trunk", "an-upstream:a-repository:main")
+    answers = {
+        ("GET", f"/{compared}"): answer(
+            HTTPStatus.OK,
+            {
+                RestJSONKey.STATUS: "ahead",
+                RestJSONKey.AHEAD_BY: 2,
+                RestJSONKey.BEHIND_BY: 0,
+            },
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        comparison = client(api).compare("trunk", "an-upstream:a-repository:main")
+
+    assert comparison == BranchComparison(ahead_by=2, behind_by=0)
+
+
+def test_a_fork_s_branch_is_synced_with_its_upstream():
+    answers = {
+        ("POST", f"/{ROUTE.merge_upstream}"): answer(
+            HTTPStatus.OK, {"merge_type": "fast-forward"}
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        client(api).sync_with_upstream("trunk")
+
+    assert api.sent[0].payload == {RestJSONKey.BRANCH: "trunk"}
 
 
 # %% opening a pull request

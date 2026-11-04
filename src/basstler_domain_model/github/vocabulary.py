@@ -474,6 +474,7 @@ class RestJSONKey(StrEnum):
     REPOSITORY = "repo"
     FULL_NAME = "full_name"
     PARENT = "parent"
+    BRANCH = "branch"
 
 
 # %% issues and workflow runs

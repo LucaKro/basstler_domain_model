@@ -115,6 +115,11 @@ class RepositoryRoute:
         """:return: The repository's pull requests."""
         return f"{self.root}/pulls"
 
+    @property
+    def merge_upstream(self) -> str:
+        """:return: The bringing of a fork's branch up to its upstream's."""
+        return f"{self.root}/merge-upstream"
+
     def pull_requests_for_head(self, owner: str, branch: str) -> str:
         """
         :param owner: Whose branch to search for.

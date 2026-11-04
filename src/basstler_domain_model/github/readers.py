@@ -30,6 +30,11 @@ from basstler_domain_model.github.rest_models import (
     RestPullRequest,
     RestReviewThread,
 )
+from basstler_domain_model.github.review_writers import (
+    GraphQLReviewThreadWriter,
+    RestReviewThreadWriter,
+    ReviewThreadWriter,
+)
 from basstler_domain_model.github.review_models import (
     BranchPullRequest,
     Review,
@@ -316,3 +321,13 @@ class ReadSource(StrEnum):
         if self is ReadSource.REST:
             return RestPullRequestReader(client, upstream_repository, fork_owner)
         return UpstreamPullRequestReader(client, upstream_repository, fork_owner)
+
+    def writer(self, client: GitHubApi, repository: Repository) -> ReviewThreadWriter:
+        """
+        :param client: The client the writer goes through.
+        :param repository: The repository whose review threads it writes.
+        :return: The review thread writer for this API.
+        """
+        if self is ReadSource.REST:
+            return RestReviewThreadWriter(client, repository)
+        return GraphQLReviewThreadWriter(client, repository, client)

@@ -152,6 +152,25 @@ class RepositoryRoute:
         """
         return self.listing(f"{self.pull_request(number)}/comments")
 
+    def review_comment_replies(self, number: int, comment: int) -> str:
+        """
+        :param number: The pull request's number.
+        :param comment: A review comment on it, the first of its thread.
+        :return: The replies to that comment's thread.
+        """
+        return f"{self.pull_request(number)}/comments/{comment}/replies"
+
+    def thread_resolution(self, number: int, comment: int) -> str:
+        """
+        The resolving of a thread - a route of the Claude Code session proxy's own,
+        standing in for the GraphQL GitHub keeps resolving behind.
+
+        :param number: The pull request's number.
+        :param comment: The first comment of the thread to resolve.
+        :return: The resolving of that thread.
+        """
+        return f"{self.pull_request(number)}/ccr/comments/{comment}/resolve"
+
     def review_threads(self, number: int) -> str:
         """
         The threads with their resolved state - a route of the Claude Code session

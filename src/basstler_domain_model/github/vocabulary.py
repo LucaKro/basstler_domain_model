@@ -131,6 +131,7 @@ class QueryVariable(StrEnum):
     HEAD_REF_NAME = "headRefName"
     NUMBER = "number"
     THREAD_CURSOR = "threadCursor"
+    THREAD_ID = "threadId"
 
 
 class GraphQLDocument(StrEnum):
@@ -140,6 +141,7 @@ class GraphQLDocument(StrEnum):
 
     PULL_REQUEST_FOR_BRANCH = "pull_request_for_branch"
     REVIEW_THREADS_PAGE = "review_threads_page"
+    RESOLVE_REVIEW_THREAD = "resolve_review_thread"
 
     def read(self) -> str:
         """:return: The document's text."""

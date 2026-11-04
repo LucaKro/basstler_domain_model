@@ -360,6 +360,40 @@ def test_a_diverged_branch_does_not_fast_forward(checkout: GitCommandRunner):
     assert checkout.contains("mine", "HEAD")
 
 
+def test_a_branch_merges_another_s_commits_with_the_message_given(
+    checkout: GitCommandRunner,
+):
+    commit_on(checkout, "other", "main", "other.txt")
+    commit_on(checkout, "mine", "main", "mine.txt")
+
+    merged = checkout.merge("other", "Merge other into mine")
+
+    assert merged.succeeded
+    assert checkout.contains("other", "HEAD")
+    assert (
+        checkout.run("log", "--max-count=1", "--format=%B") == "Merge other into mine"
+    )
+
+
+def test_a_conflicting_merge_names_its_files_and_is_undone(
+    checkout: GitCommandRunner,
+):
+    for branch, text in (("other", "theirs\n"), ("mine", "ours\n")):
+        checkout.run("switch", "--quiet", "--create", branch, "main")
+        (checkout.working_directory / "README.md").write_text(text)
+        checkout.commit(f"Change README on {branch}", [Path("README.md")])
+    before = checkout.commit_at("HEAD")
+
+    merged = checkout.merge("other", "Merge other into mine")
+    conflicted = checkout.conflicted_files()
+    checkout.abort_merge()
+
+    assert not merged.succeeded
+    assert conflicted == ["README.md"]
+    assert checkout.commit_at("HEAD") == before
+    assert checkout.run("status", "--porcelain") == ""
+
+
 def test_a_kept_reset_keeps_uncommitted_changes(checkout: GitCommandRunner):
     commit_on(checkout, "rewritten", "main", "rewritten.txt")
     commit_on(checkout, "mine", "main", "mine.txt")

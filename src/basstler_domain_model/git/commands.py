@@ -482,6 +482,30 @@ class GitCommandRunner:
         """
         return self.attempt("merge", "--quiet", "--ff-only", reference)
 
+    def merge(self, reference: str, message: str) -> GitCommandResult:
+        """
+        Merge a reference into the checked-out branch, committing the merge with the
+        message given, or fast-forwarding when the branch has no commits of its own.
+
+        :param reference: What to merge.
+        :param message: The merge commit's message.
+        :return: The finished merge, failed when it conflicts; :meth:`conflicted_files`
+            names the files then, and :meth:`abort_merge` undoes it.
+        """
+        return self.attempt("merge", "--quiet", "--no-edit", "-m", message, reference)
+
+    def conflicted_files(self) -> list[str]:
+        """
+        :return: The files a merge in progress left conflicting.
+        """
+        return self.run("diff", "--name-only", "--diff-filter=U").splitlines()
+
+    def abort_merge(self) -> None:
+        """
+        Undo a merge in progress, back to the commit and files before it.
+        """
+        self.run("merge", "--abort")
+
     def fast_forward_branch(self, branch: str, reference: str) -> GitCommandResult:
         """
         Move a branch that is not checked out forward to a reference.

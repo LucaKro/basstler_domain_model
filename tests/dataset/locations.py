@@ -109,6 +109,11 @@ class DatasetLocation(PathEnumeration):
     deletion of merged branches off.
     """
 
+    FORK = DIRECTORY / "api" / "fork.json"
+    """
+    A fork as REST describes it, naming the repository it was forked from.
+    """
+
     REFUSAL = DIRECTORY / "api" / "refusal.json"
     """
     The body of a refused call.

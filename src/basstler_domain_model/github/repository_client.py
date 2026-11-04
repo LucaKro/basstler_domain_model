@@ -205,6 +205,49 @@ class PullRequestOpener(ABC):
 
 
 @dataclass(frozen=True)
+class ForkDetails(ABC):
+    """
+    Reading which repository a repository was forked from.
+    """
+
+    @abstractmethod
+    def upstream(self) -> Repository | None:
+        """
+        :return: The repository it was forked from, ``None`` when it is no fork.
+        """
+
+
+@dataclass(frozen=True)
+class PullRequestsFromForks(ABC):
+    """
+    Finding and opening pull requests into this repository from a fork's branch.
+    """
+
+    @abstractmethod
+    def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+        """
+        :param owner: The fork's owner.
+        :param branch: The fork's branch.
+        :return: Every pull request opened from it, open or closed.
+        """
+
+    @abstractmethod
+    def open_pull_request_from(
+        self, owner: str, branch: str, base: str, title: str, body: str
+    ) -> RestPullRequest:
+        """
+        Open a pull request, ready for review, from a fork's branch.
+
+        :param owner: The fork's owner.
+        :param branch: The fork's branch.
+        :param base: The branch of this repository to merge it into.
+        :param title: The pull request's title.
+        :param body: Its description.
+        :return: The new pull request.
+        """
+
+
+@dataclass(frozen=True)
 class RepositoryDetails(ABC):
     """
     Reading facts about the repository itself.
@@ -443,6 +486,8 @@ class PullRequestListState(PullRequestListingSpecification, Enum):
 @dataclass(frozen=True)
 class GitHubRepository(
     ForkPullRequests,
+    ForkDetails,
+    PullRequestsFromForks,
     PullRequestBaseWriter,
     PullRequestOpener,
     RepositoryDetails,
@@ -606,6 +651,33 @@ class GitHubRepository(
 
     def default_branch(self) -> str:
         return RestRepository.from_json(self.api.get(self.route.root)).default_branch
+
+    def upstream(self) -> Repository | None:
+        return RestRepository.from_json(self.api.get(self.route.root)).upstream
+
+    def pull_requests_from(self, owner: str, branch: str) -> list[RestPullRequest]:
+        return [
+            RestPullRequest.from_json(entry)
+            for entry in self._every_entry(
+                self.route.pull_requests_for_head(owner, branch)
+            )
+        ]
+
+    def open_pull_request_from(
+        self, owner: str, branch: str, base: str, title: str, body: str
+    ) -> RestPullRequest:
+        created = self.api.request(
+            "POST",
+            self.route.pull_requests,
+            {
+                RestJSONKey.HEAD: f"{owner}:{branch}",
+                RestJSONKey.BASE: base,
+                RestJSONKey.TITLE: title,
+                RestJSONKey.BODY: body,
+                RestJSONKey.DRAFT: False,
+            },
+        )
+        return RestPullRequest.from_json(created)
 
     def deletes_merged_branches(self) -> bool:
         return RestRepository.from_json(

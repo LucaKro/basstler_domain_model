@@ -342,6 +342,24 @@ def test_an_issue_is_closed_with_its_reason():
     }
 
 
+def test_an_issue_s_title_is_set_and_nothing_else():
+    answers = {("PATCH", f"/{ROUTE.issue(3)}"): answer(HTTPStatus.OK, {})}
+
+    with ReplayedApi(answers) as api:
+        client(api).set_issue_title(3, "A sharper title")
+
+    assert api.sent[0].payload == {RestJSONKey.TITLE: "A sharper title"}
+
+
+def test_an_issue_s_description_is_set_and_nothing_else():
+    answers = {("PATCH", f"/{ROUTE.issue(3)}"): answer(HTTPStatus.OK, {})}
+
+    with ReplayedApi(answers) as api:
+        client(api).set_issue_description(3, "What was found, corrected.")
+
+    assert api.sent[0].payload == {RestJSONKey.BODY: "What was found, corrected."}
+
+
 def test_a_label_with_a_colour_is_created_in_it():
     class ColouredLabel(GitHubLabel):
         description = "A coloured label"

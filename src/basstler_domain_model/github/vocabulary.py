@@ -473,6 +473,7 @@ class RestJSONKey(StrEnum):
     REFERENCE = "ref"
     REPOSITORY = "repo"
     FULL_NAME = "full_name"
+    PARENT = "parent"
 
 
 # %% issues and workflow runs

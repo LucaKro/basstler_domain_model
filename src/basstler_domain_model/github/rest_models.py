@@ -25,6 +25,7 @@ from basstler_domain_model.github.vocabulary import (
     PullRequestState,
     RestJSONKey,
 )
+from basstler_domain_model.repository import Repository
 
 # %% a pull request
 
@@ -225,6 +226,11 @@ class RestRepository(JSONModel):
     Whether the repository has issues turned on.
     """
 
+    upstream: Repository | None
+    """
+    The repository it was forked from, ``None`` when it is no fork.
+    """
+
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> RestRepository:
         """
@@ -237,6 +243,11 @@ class RestRepository(JSONModel):
             default_branch=data[RestJSONKey.DEFAULT_BRANCH],
             deletes_merged_branches=data[RestJSONKey.DELETE_BRANCH_ON_MERGE],
             issues_enabled=data[RestJSONKey.HAS_ISSUES],
+            upstream=(
+                Repository.parse(data[RestJSONKey.PARENT][RestJSONKey.FULL_NAME])
+                if RestJSONKey.PARENT in data
+                else None
+            ),
         )
 
 

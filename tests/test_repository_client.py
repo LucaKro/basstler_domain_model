@@ -71,6 +71,64 @@ def repository_answers() -> dict[tuple[str, str], RecordedAnswer]:
     }
 
 
+# %% forks
+
+
+def test_a_fork_names_the_repository_it_was_forked_from():
+    answers = {
+        ("GET", f"/{ROUTE.root}"): RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.FORK
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        upstream = client(api).upstream()
+
+    parent = json.loads(DatasetLocation.FORK.read_text())[RestJSONKey.PARENT]
+    assert upstream == Repository.parse(parent[RestJSONKey.FULL_NAME])
+
+
+def test_a_repository_forked_from_none_has_no_upstream():
+    with ReplayedApi(repository_answers()) as api:
+        assert client(api).upstream() is None
+
+
+def test_a_pull_request_is_opened_from_a_fork_s_branch_ready_for_review():
+    answers = {
+        ("POST", f"/{ROUTE.pull_requests}"): RecordedAnswer.from_file(
+            HTTPStatus.CREATED, DatasetLocation.PULL_REQUEST_OPEN
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        opened = client(api).open_pull_request_from(
+            "a-fork-owner", "a-branch", "trunk", "A title", "A body"
+        )
+
+    assert api.sent[0].payload == {
+        RestJSONKey.HEAD: "a-fork-owner:a-branch",
+        RestJSONKey.BASE: "trunk",
+        RestJSONKey.TITLE: "A title",
+        RestJSONKey.BODY: "A body",
+        RestJSONKey.DRAFT: False,
+    }
+    recorded = json.loads(DatasetLocation.PULL_REQUEST_OPEN.read_text())
+    assert opened.number == recorded[RestJSONKey.NUMBER]
+
+
+def test_the_pull_requests_from_a_fork_s_branch_are_listed():
+    listing = ROUTE.pull_requests_for_head("a-fork-owner", "a-branch")
+    recorded = json.loads(DatasetLocation.PULL_REQUEST_OPEN.read_text())
+    answers = {("GET", f"/{listing}"): answer(HTTPStatus.OK, [recorded])}
+
+    with ReplayedApi(answers) as api:
+        found = client(api).pull_requests_from("a-fork-owner", "a-branch")
+
+    assert [pull_request.number for pull_request in found] == [
+        recorded[RestJSONKey.NUMBER]
+    ]
+
+
 # %% opening a pull request
 
 

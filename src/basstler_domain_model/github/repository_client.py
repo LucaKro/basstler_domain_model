@@ -128,6 +128,17 @@ class RepositoryLabels(ABC):
 
 
 @dataclass(frozen=True)
+class PullRequestCloser(ABC):
+    """
+    Closing a pull request without merging it.
+    """
+
+    @abstractmethod
+    def close_pull_request(self, number: int) -> None:
+        """:param number: The open pull request to close; it can be reopened."""
+
+
+@dataclass(frozen=True)
 class PullRequestBaseWriter(ABC):
     """
     Retargeting a pull request at another branch.
@@ -519,6 +530,7 @@ class GitHubRepository(
     ForkSync,
     PullRequestsFromForks,
     PullRequestBaseWriter,
+    PullRequestCloser,
     PullRequestOpener,
     RepositoryDetails,
     RepositorySettings,
@@ -807,6 +819,13 @@ class GitHubRepository(
     def set_base(self, number: int, branch: str) -> None:
         self.api.request(
             "PATCH", self.route.pull_request(number), {RestJSONKey.BASE: branch}
+        )
+
+    def close_pull_request(self, number: int) -> None:
+        self.api.request(
+            "PATCH",
+            self.route.pull_request(number),
+            {RestJSONKey.STATE: PullRequestState.CLOSED},
         )
 
     def stacks(self) -> list[Stack]:

@@ -26,6 +26,7 @@ from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
     IssueState,
     IssueStateReason,
+    PullRequestState,
     RestJSONKey,
 )
 from basstler_domain_model.repository import Repository
@@ -431,6 +432,15 @@ def test_an_issue_is_closed_with_its_reason():
         RestJSONKey.STATE: IssueState.CLOSED,
         RestJSONKey.STATE_REASON: IssueStateReason.NOT_PLANNED,
     }
+
+
+def test_a_pull_request_is_closed_without_being_merged():
+    answers = {("PATCH", f"/{ROUTE.pull_request(4)}"): answer(HTTPStatus.OK, {})}
+
+    with ReplayedApi(answers) as api:
+        client(api).close_pull_request(4)
+
+    assert api.sent[0].payload == {RestJSONKey.STATE: PullRequestState.CLOSED}
 
 
 def test_an_issue_s_title_is_set_and_nothing_else():

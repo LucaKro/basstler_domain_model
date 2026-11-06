@@ -114,6 +114,16 @@ class DatasetLocation(PathEnumeration):
     A fork as REST describes it, naming the repository it was forked from.
     """
 
+    WORKFLOWS = DIRECTORY / "api" / "workflows.json"
+    """
+    A repository's workflows, one of them off because the repository is a fork.
+    """
+
+    WORKFLOW_RUNS = DIRECTORY / "api" / "workflow-runs.json"
+    """
+    A branch's runs: one failed, one still going.
+    """
+
     REFUSAL = DIRECTORY / "api" / "refusal.json"
     """
     The body of a refused call.

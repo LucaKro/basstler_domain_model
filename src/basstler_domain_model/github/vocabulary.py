@@ -474,6 +474,8 @@ class RestJSONKey(StrEnum):
     ENABLED = "enabled"
     ALLOWED_ACTIONS = "allowed_actions"
     WORKFLOW_RUNS = "workflow_runs"
+    WORKFLOWS = "workflows"
+    HEAD_SHA = "head_sha"
     STATUS = "status"
     REFERENCE = "ref"
     REPOSITORY = "repo"
@@ -566,6 +568,53 @@ class WorkflowRunStatus(StrEnum):
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
+
+
+class WorkflowRunConclusion(GitHubVocabulary):
+    """
+    How a completed Actions workflow run ended.
+    """
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+    CANCELLED = "cancelled"
+    SKIPPED = "skipped"
+    TIMED_OUT = "timed_out"
+    ACTION_REQUIRED = "action_required"
+    NEUTRAL = "neutral"
+    STALE = "stale"
+    STARTUP_FAILURE = "startup_failure"
+
+
+class WorkflowState(GitHubVocabulary):
+    """
+    Whether GitHub runs an Actions workflow when its events happen.
+    """
+
+    ACTIVE = "active"
+    """
+    It runs.
+    """
+
+    DELETED = "deleted"
+    """
+    Its file is gone.
+    """
+
+    DISABLED_FORK = "disabled_fork"
+    """
+    Off because the repository is a fork whose workflows were not turned on.
+    """
+
+    DISABLED_INACTIVITY = "disabled_inactivity"
+    """
+    Turned off by GitHub after the repository saw no activity for a while.
+    """
+
+    DISABLED_MANUALLY = "disabled_manually"
+    """
+    Turned off by someone.
+    """
 
 
 # %% pull request mergeability

@@ -12,9 +12,15 @@ from typing import Any
 
 import pytest
 
-from basstler_domain_model.github.clients import GraphQLClient, RestClient
+from basstler_domain_model.github.clients import (
+    GraphQLClient,
+    RecordingGraphQLClient,
+    ReplayingGraphQLClient,
+    RestClient,
+)
 from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.exceptions import (
+    RecordedAnswersExhaustedError,
     ReviewThreadWithoutCommentsError,
     UpstreamPullRequestNotFound,
 )
@@ -336,3 +342,37 @@ def test_a_commit_nothing_reported_on_has_no_checks() -> None:
     )
 
     assert reader.checks("a1b2c3") is None
+
+
+# %% recorded and replayed answers
+
+
+def test_a_read_replayed_from_its_recorded_answers_sees_the_same_pull_request():
+    recording = RecordingGraphQLClient(
+        GraphQLAnswersInOrder(
+            [
+                recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH),
+                recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_ONE),
+                recorded(DatasetLocation.GRAPHQL_THREADS_PAGE_TWO),
+            ]
+        )
+    )
+    original = UpstreamPullRequestReader(recording, UPSTREAM, FORK_OWNER)
+    read = original.read_current_state(original.resolve_pull_request_number("a-branch"))
+
+    replayed = UpstreamPullRequestReader(
+        ReplayingGraphQLClient(recording.answers), UPSTREAM, FORK_OWNER
+    )
+    again = replayed.read_current_state(
+        replayed.resolve_pull_request_number("a-branch")
+    )
+
+    assert again == read
+
+
+def test_a_query_past_the_recorded_answers_is_refused():
+    client = ReplayingGraphQLClient([recorded(DatasetLocation.GRAPHQL_BRANCH_SEARCH)])
+    client.execute("query", {})
+
+    with pytest.raises(RecordedAnswersExhaustedError):
+        client.execute("query", {})

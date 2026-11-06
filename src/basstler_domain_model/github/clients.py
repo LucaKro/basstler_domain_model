@@ -20,7 +20,10 @@ from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.commands import CommandRunner
 from basstler_domain_model.environment import GitHubActionsVariable
 from basstler_domain_model.github.credential import GitHubToken
-from basstler_domain_model.github.exceptions import GitHubRequestFailed
+from basstler_domain_model.github.exceptions import (
+    GitHubRequestFailed,
+    RecordedAnswersExhaustedError,
+)
 from basstler_domain_model.github.pull_request_models import GraphQLResponse
 from basstler_domain_model.github.vocabulary import PullRequestJSONKey
 from basstler_domain_model.repository import GitHubAddress, Repository
@@ -58,6 +61,56 @@ class GraphQLClient(ABC):
         :param variables: The document's variables.
         :return: The response's ``data`` member.
         """
+
+
+@dataclass(frozen=True)
+class RecordingGraphQLClient(GraphQLClient):
+    """
+    Sends each query through another client, keeping every answer, in order, for a
+    :class:`ReplayingGraphQLClient` to give again elsewhere.
+    """
+
+    client: GraphQLClient
+    """
+    The client the queries go through.
+    """
+
+    answers: list[dict[str, Any]] = field(default_factory=list)
+    """
+    The ``data`` of every answer, in the order they came.
+    """
+
+    def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        answer = self.client.execute(query, variables)
+        self.answers.append(answer)
+        return answer
+
+
+@dataclass
+class ReplayingGraphQLClient(GraphQLClient):
+    """
+    Answers each query with the next answer a :class:`RecordingGraphQLClient` kept, so
+    the same reads, made in the same order, see what GitHub answered then.
+    """
+
+    answers: list[dict[str, Any]]
+    """
+    The ``data`` of every recorded answer, in order.
+    """
+
+    given: int = 0
+    """
+    How many answers were given so far.
+    """
+
+    def execute(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        """
+        :raises RecordedAnswersExhaustedError: If every answer was given already.
+        """
+        if self.given == len(self.answers):
+            raise RecordedAnswersExhaustedError(self.given)
+        self.given += 1
+        return self.answers[self.given - 1]
 
 
 class RestClient(ABC):

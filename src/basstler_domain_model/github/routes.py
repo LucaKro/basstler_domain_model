@@ -255,6 +255,11 @@ class RepositoryRoute:
         """:return: Whether Actions may run in the repository, and which."""
         return f"{self.root}/actions/permissions"
 
+    @property
+    def workflows(self) -> str:
+        """:return: The repository's Actions workflows, on every branch."""
+        return f"{self.root}/actions/workflows"
+
     def workflow_runs(self, branch: str) -> str:
         """:param branch: The branch the runs were triggered on.
         :return: Its workflow runs, newest first."""

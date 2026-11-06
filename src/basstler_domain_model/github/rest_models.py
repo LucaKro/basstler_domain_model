@@ -24,6 +24,9 @@ from basstler_domain_model.github.vocabulary import (
     MergeableState,
     PullRequestState,
     RestJSONKey,
+    WorkflowRunConclusion,
+    WorkflowRunStatus,
+    WorkflowState,
 )
 from basstler_domain_model.repository import Repository
 
@@ -283,6 +286,104 @@ class RestRepository(JSONModel):
                 if RestJSONKey.PARENT in data
                 else None
             ),
+        )
+
+
+# %% Actions workflows
+
+
+@dataclass(frozen=True)
+class Workflow(JSONModel):
+    """
+    An Actions workflow, from a file on any of the repository's branches.
+    """
+
+    name: str
+    """
+    The name its file gives it.
+    """
+
+    path: str
+    """
+    Its file, relative to the repository's root.
+    """
+
+    state: WorkflowState
+    """
+    Whether GitHub runs it.
+    """
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> Workflow:
+        """
+        Read a workflow object.
+
+        :param data: The object to read.
+        :return: The parsed workflow.
+        """
+        return cls(
+            name=data[RestJSONKey.NAME],
+            path=data[RestJSONKey.PATH],
+            state=WorkflowState.from_value(data[RestJSONKey.STATE]),
+        )
+
+
+@dataclass(frozen=True)
+class WorkflowRun(JSONModel):
+    """
+    One run of an Actions workflow.
+    """
+
+    identifier: int
+    """
+    The run's number in GitHub's records.
+    """
+
+    path: str
+    """
+    The file of the workflow run.
+    """
+
+    commit: str
+    """
+    The commit whose push or event started it.
+    """
+
+    status: WorkflowRunStatus
+    """
+    Where it stands.
+    """
+
+    conclusion: WorkflowRunConclusion | None
+    """
+    How it ended, ``None`` until it completed.
+    """
+
+    url: str
+    """
+    Its page on GitHub, with its log.
+    """
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> WorkflowRun:
+        """
+        Read a workflow run object.
+
+        :param data: The object to read.
+        :return: The parsed run.
+        """
+        conclusion = data[RestJSONKey.CONCLUSION]
+        return cls(
+            identifier=data[RestJSONKey.IDENTIFIER],
+            path=data[RestJSONKey.PATH],
+            commit=data[RestJSONKey.HEAD_SHA],
+            status=WorkflowRunStatus(data[RestJSONKey.STATUS]),
+            conclusion=(
+                None
+                if conclusion is None
+                else WorkflowRunConclusion.from_value(conclusion)
+            ),
+            url=data[RestJSONKey.HTML_URL],
         )
 
 

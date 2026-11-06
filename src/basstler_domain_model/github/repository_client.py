@@ -27,6 +27,8 @@ from basstler_domain_model.github.rest_models import (
     BranchComparison,
     RestPullRequest,
     RestRepository,
+    Workflow,
+    WorkflowRun,
 )
 from basstler_domain_model.github.stack_models import Stack
 from basstler_domain_model.github.vocabulary import (
@@ -229,6 +231,26 @@ class ForkDetails(ABC):
     def upstream(self) -> Repository | None:
         """
         :return: The repository it was forked from, ``None`` when it is no fork.
+        """
+
+
+@dataclass(frozen=True)
+class RepositoryWorkflows(ABC):
+    """
+    Reading a repository's Actions workflows and their runs.
+    """
+
+    @abstractmethod
+    def workflows(self) -> list[Workflow]:
+        """
+        :return: Every workflow, from a file on any of the repository's branches.
+        """
+
+    @abstractmethod
+    def runs_on(self, branch: str) -> list[WorkflowRun]:
+        """
+        :param branch: A branch.
+        :return: The latest runs its pushes and events started, newest first.
         """
 
 
@@ -567,6 +589,7 @@ class GitHubRepository(
     StackWriter,
     CommitChecks,
     RepositoryLabels,
+    RepositoryWorkflows,
     CredentialHolder,
 ):
     """
@@ -732,6 +755,19 @@ class GitHubRepository(
 
     def upstream(self) -> Repository | None:
         return RestRepository.from_json(self.api.get(self.route.root)).upstream
+
+    def workflows(self) -> list[Workflow]:
+        return [
+            Workflow.from_json(entry)
+            for page in self.api.get_pages(self.route.listing(self.route.workflows))
+            for entry in page[RestJSONKey.WORKFLOWS]
+        ]
+
+    def runs_on(self, branch: str) -> list[WorkflowRun]:
+        listed = self.api.get(self.route.workflow_runs(branch))
+        return [
+            WorkflowRun.from_json(entry) for entry in listed[RestJSONKey.WORKFLOW_RUNS]
+        ]
 
     def compare(self, base: str, head: str) -> BranchComparison:
         return BranchComparison.from_json(

@@ -29,6 +29,9 @@ from basstler_domain_model.github.vocabulary import (
     IssueStateReason,
     PullRequestState,
     RestJSONKey,
+    WorkflowRunConclusion,
+    WorkflowRunStatus,
+    WorkflowState,
 )
 from basstler_domain_model.repository import Repository
 
@@ -94,6 +97,51 @@ def test_a_fork_names_the_repository_it_was_forked_from():
 def test_a_repository_forked_from_none_has_no_upstream():
     with ReplayedApi(repository_answers()) as api:
         assert client(api).upstream() is None
+
+
+# %% Actions workflows
+
+
+def test_the_workflows_are_read_with_whether_github_runs_them():
+    answers = {
+        ("GET", f"/{ROUTE.listing(ROUTE.workflows)}"): RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.WORKFLOWS
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        workflows = client(api).workflows()
+
+    recorded = json.loads(DatasetLocation.WORKFLOWS.read_text())[RestJSONKey.WORKFLOWS]
+    assert [(workflow.path, workflow.state) for workflow in workflows] == [
+        (entry[RestJSONKey.PATH], WorkflowState.from_value(entry[RestJSONKey.STATE]))
+        for entry in recorded
+    ]
+
+
+def test_a_branch_s_runs_are_read_newest_first():
+    answers = {
+        ("GET", f"/{ROUTE.workflow_runs('github-workflow/notes')}"): (
+            RecordedAnswer.from_file(HTTPStatus.OK, DatasetLocation.WORKFLOW_RUNS)
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        runs = client(api).runs_on("github-workflow/notes")
+
+    recorded = json.loads(DatasetLocation.WORKFLOW_RUNS.read_text())
+    assert [(run.identifier, run.status, run.conclusion) for run in runs] == [
+        (
+            entry[RestJSONKey.IDENTIFIER],
+            WorkflowRunStatus(entry[RestJSONKey.STATUS]),
+            (
+                None
+                if entry[RestJSONKey.CONCLUSION] is None
+                else WorkflowRunConclusion.from_value(entry[RestJSONKey.CONCLUSION])
+            ),
+        )
+        for entry in recorded[RestJSONKey.WORKFLOW_RUNS]
+    ]
 
 
 def test_a_pull_request_is_opened_from_a_fork_s_branch_ready_for_review():

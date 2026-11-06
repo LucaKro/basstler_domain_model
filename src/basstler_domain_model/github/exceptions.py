@@ -277,3 +277,26 @@ class ContradictoryLabelWriteError(DataclassException, ValueError):
 
     def suggest_correction(self) -> str:
         return "Ask for each label to be either added or removed, not both."
+
+
+# %% recorded answers
+
+
+@dataclass
+class RecordedAnswersExhaustedError(DataclassException, LookupError):
+    """
+    Raised when a query is sent to recorded GraphQL answers that have all been given.
+    """
+
+    given: int
+    """
+    How many answers were recorded, and given.
+    """
+
+    def error_message(self) -> str:
+        return f"all {self.given} recorded GraphQL answers were given already"
+
+    def suggest_correction(self) -> str:
+        return (
+            "Replay the answers to the same queries, in the order they were recorded."
+        )

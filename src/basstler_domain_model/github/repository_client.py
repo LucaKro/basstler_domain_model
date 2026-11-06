@@ -16,7 +16,7 @@ from typing import Any
 from basstler_domain_model.github.clients import GitHubApi, RestApi
 from basstler_domain_model.github.commit_checks import CommitCheckReader
 from basstler_domain_model.github.exceptions import NotAnIssueError
-from basstler_domain_model.github.issue_models import Issue, IssueComment
+from basstler_domain_model.github.issue_models import Issue, IssueComment, LabelEvent
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.routes import (
     QueryParameter,
@@ -299,6 +299,20 @@ class RepositoryDetails(ABC):
 
 
 @dataclass(frozen=True)
+class IssueLabelHistory(ABC):
+    """
+    Reading the labels added to and removed from an issue over time.
+    """
+
+    @abstractmethod
+    def label_events(self, number: int) -> list[LabelEvent]:
+        """
+        :param number: The issue or pull request.
+        :return: Its labels added and removed, oldest first.
+        """
+
+
+@dataclass(frozen=True)
 class RepositoryDiscussions(ABC):
     """
     Reading whether the repository has Discussions turned on.
@@ -547,6 +561,7 @@ class GitHubRepository(
     RepositoryDiscussions,
     RepositorySettings,
     IssueBoard,
+    IssueLabelHistory,
     ReviewRequests,
     StackReader,
     StackWriter,
@@ -669,6 +684,15 @@ class GitHubRepository(
             "POST", self.route.issue_comments(number), {RestJSONKey.BODY: body}
         )
         return str(created[RestJSONKey.HTML_URL])
+
+    def label_events(self, number: int) -> list[LabelEvent]:
+        return [
+            LabelEvent.from_json(entry)
+            for entry in self._every_entry(
+                self.route.listing(self.route.issue_events(number))
+            )
+            if LabelEvent.is_label_event(entry)
+        ]
 
     def comments(self, number: int) -> list[IssueComment]:
         return [

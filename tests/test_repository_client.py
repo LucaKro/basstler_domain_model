@@ -278,6 +278,14 @@ def test_whether_issues_are_on_is_read_from_the_repository():
         )
 
 
+def test_whether_discussions_are_on_is_read_from_the_repository():
+    with ReplayedApi(repository_answers()) as api:
+        assert (
+            client(api).discussions_enabled()
+            is recorded_repository()[RestJSONKey.HAS_DISCUSSIONS]
+        )
+
+
 def test_turning_on_issues_asks_github_for_them():
     answers = {("PATCH", f"/{ROUTE.root}"): answer(HTTPStatus.OK, {})}
 

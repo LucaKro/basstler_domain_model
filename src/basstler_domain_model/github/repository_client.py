@@ -299,6 +299,17 @@ class RepositoryDetails(ABC):
 
 
 @dataclass(frozen=True)
+class RepositoryDiscussions(ABC):
+    """
+    Reading whether the repository has Discussions turned on.
+    """
+
+    @abstractmethod
+    def discussions_enabled(self) -> bool:
+        """:return: Whether the repository has Discussions turned on."""
+
+
+@dataclass(frozen=True)
 class RepositorySettings(ABC):
     """
     Whether GitHub deletes merged branches, and turning that on, which not every
@@ -533,6 +544,7 @@ class GitHubRepository(
     PullRequestCloser,
     PullRequestOpener,
     RepositoryDetails,
+    RepositoryDiscussions,
     RepositorySettings,
     IssueBoard,
     ReviewRequests,
@@ -743,6 +755,11 @@ class GitHubRepository(
 
     def issues_enabled(self) -> bool:
         return RestRepository.from_json(self.api.get(self.route.root)).issues_enabled
+
+    def discussions_enabled(self) -> bool:
+        return RestRepository.from_json(
+            self.api.get(self.route.root)
+        ).discussions_enabled
 
     def turn_on_issues(self) -> bool:
         return self._change_setting(

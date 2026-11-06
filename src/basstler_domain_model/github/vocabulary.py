@@ -461,6 +461,7 @@ class RestJSONKey(StrEnum):
     OPEN = "open"
     DEFAULT_BRANCH = "default_branch"
     HAS_ISSUES = "has_issues"
+    HAS_DISCUSSIONS = "has_discussions"
     STATE_REASON = "state_reason"
     REQUESTED_REVIEWERS = "requested_reviewers"
     AHEAD_BY = "ahead_by"

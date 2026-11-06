@@ -16,7 +16,7 @@ import pytest
 
 from basstler_domain_model.github.clients import GitHubApi, RestAnswer, RestApi
 from basstler_domain_model.github.exceptions import GitHubRequestFailed, NotAnIssueError
-from basstler_domain_model.github.issue_models import Issue, IssueComment
+from basstler_domain_model.github.issue_models import Issue, IssueComment, LabelEvent
 from basstler_domain_model.github.labels import GitHubLabel
 from basstler_domain_model.github.replayed_api import RecordedAnswer, ReplayedApi
 from basstler_domain_model.github.repository_client import GitHubRepository
@@ -24,6 +24,7 @@ from basstler_domain_model.github.rest_models import BranchComparison
 from basstler_domain_model.github.routes import QueryParameter, RepositoryRoute
 from basstler_domain_model.github.vocabulary import (
     ClosingKeyword,
+    IssueEventType,
     IssueState,
     IssueStateReason,
     PullRequestState,
@@ -484,6 +485,37 @@ def test_a_label_with_a_colour_is_created_in_it():
         RestJSONKey.DESCRIPTION: ColouredLabel.description,
         RestJSONKey.COLOR: ColouredLabel.color,
     }
+
+
+def test_an_issue_s_label_events_are_read_oldest_first_without_other_events():
+    listing = ROUTE.listing(ROUTE.issue_events(9))
+    entries = [
+        {
+            RestJSONKey.EVENT: IssueEventType.LABELED,
+            RestJSONKey.LABEL: {RestJSONKey.NAME: "a"},
+        },
+        {RestJSONKey.EVENT: "closed"},
+        {
+            RestJSONKey.EVENT: IssueEventType.UNLABELED,
+            RestJSONKey.LABEL: {RestJSONKey.NAME: "a"},
+        },
+        {
+            RestJSONKey.EVENT: IssueEventType.LABELED,
+            RestJSONKey.LABEL: {RestJSONKey.NAME: "b"},
+        },
+    ]
+    answers = {
+        ("GET", f"/{listing}"): RecordedAnswer(HTTPStatus.OK, json.dumps(entries))
+    }
+
+    with ReplayedApi(answers) as api:
+        events = client(api).label_events(9)
+
+    assert events == [
+        LabelEvent("a", True),
+        LabelEvent("a", False),
+        LabelEvent("b", True),
+    ]
 
 
 def test_an_issue_s_comments_are_read_with_their_authors():

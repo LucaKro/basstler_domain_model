@@ -462,6 +462,8 @@ class RestJSONKey(StrEnum):
     DEFAULT_BRANCH = "default_branch"
     HAS_ISSUES = "has_issues"
     HAS_DISCUSSIONS = "has_discussions"
+    EVENT = "event"
+    LABEL = "label"
     STATE_REASON = "state_reason"
     REQUESTED_REVIEWERS = "requested_reviewers"
     AHEAD_BY = "ahead_by"
@@ -481,6 +483,22 @@ class RestJSONKey(StrEnum):
 
 
 # %% issues and workflow runs
+
+
+class IssueEventType(StrEnum):
+    """
+    The ``event`` of an issue's event that changes its labels.
+    """
+
+    LABELED = "labeled"
+    """
+    A label added.
+    """
+
+    UNLABELED = "unlabeled"
+    """
+    A label removed.
+    """
 
 
 class IssueState(StrEnum):

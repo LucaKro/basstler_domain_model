@@ -7,7 +7,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from basstler_domain_model.github.vocabulary import IssueState, JSONModel, RestJSONKey
+from basstler_domain_model.github.vocabulary import (
+    IssueEventType,
+    IssueState,
+    JSONModel,
+    RestJSONKey,
+)
 
 # %% one issue
 
@@ -79,3 +84,35 @@ class IssueComment(JSONModel):
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> IssueComment:
         return cls(data[RestJSONKey.USER][RestJSONKey.LOGIN], data[RestJSONKey.BODY])
+
+
+@dataclass(frozen=True)
+class LabelEvent(JSONModel):
+    """
+    A label added to or removed from an issue.
+    """
+
+    label: str
+    """
+    The label's name.
+    """
+
+    added: bool
+    """
+    Whether it was added; removed otherwise.
+    """
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> LabelEvent:
+        return cls(
+            data[RestJSONKey.LABEL][RestJSONKey.NAME],
+            data[RestJSONKey.EVENT] == IssueEventType.LABELED,
+        )
+
+    @staticmethod
+    def is_label_event(data: dict[str, Any]) -> bool:
+        """
+        :param data: One of an issue's events.
+        :return: Whether it adds or removes a label.
+        """
+        return data.get(RestJSONKey.EVENT) in set(IssueEventType)

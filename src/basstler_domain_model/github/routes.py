@@ -209,6 +209,11 @@ class RepositoryRoute:
         :return: That issue."""
         return f"{self.root}/issues/{number}"
 
+    def issue_events(self, number: int) -> str:
+        """:param number: The issue or pull request.
+        :return: What happened to it, its labels added and removed among it."""
+        return f"{self.issue(number)}/events"
+
     def issue_comments(self, number: int) -> str:
         """:param number: The issue or pull request.
         :return: Its comments."""

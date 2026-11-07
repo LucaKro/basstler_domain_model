@@ -291,6 +291,15 @@ class RepositoryRoute:
         """:return: The account the token belongs to."""
         return "user"
 
+    def pull_request_search(self, author: str, branch: str) -> str:
+        """
+        :param author: Who opened the pull requests.
+        :param branch: The branch they were opened from, on any repository.
+        :return: The search for the repository's pull requests opened so, in any state.
+        """
+        terms = f"is:pr repo:{self.repository.full_name} head:{branch} author:{author}"
+        return f"search/issues?{urlencode({QueryParameter.SEARCH: terms})}"
+
     def review_requests(self) -> str:
         """
         :return: The search for the repository's open pull requests waiting on the

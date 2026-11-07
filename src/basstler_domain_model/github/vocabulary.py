@@ -475,6 +475,7 @@ class RestJSONKey(StrEnum):
     ALLOWED_ACTIONS = "allowed_actions"
     WORKFLOW_RUNS = "workflow_runs"
     WORKFLOWS = "workflows"
+    ITEMS = "items"
     HEAD_SHA = "head_sha"
     STATUS = "status"
     REFERENCE = "ref"

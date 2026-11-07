@@ -289,6 +289,45 @@ class RestRepository(JSONModel):
         )
 
 
+# %% searched pull requests
+
+
+@dataclass(frozen=True)
+class SearchedPullRequest(JSONModel):
+    """
+    A pull request as GitHub's issue search finds it.
+    """
+
+    number: int
+    """
+    Its number.
+    """
+
+    url: str
+    """
+    Its page on GitHub.
+    """
+
+    merged_at: str | None
+    """
+    When it was merged, ``None`` while it is not.
+    """
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any]) -> SearchedPullRequest:
+        """
+        Read one item of an issue search's answer.
+
+        :param data: The item to read.
+        :return: The parsed pull request.
+        """
+        return cls(
+            number=data[RestJSONKey.NUMBER],
+            url=data[RestJSONKey.HTML_URL],
+            merged_at=data[RestJSONKey.PULL_REQUEST][RestJSONKey.MERGED_AT],
+        )
+
+
 # %% Actions workflows
 
 

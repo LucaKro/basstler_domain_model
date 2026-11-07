@@ -180,6 +180,43 @@ def test_a_deleted_branch_is_gone_from_its_remote(
     assert not checkout.has_remote_branch(published)
 
 
+def test_branches_still_at_their_commits_are_deleted_in_one_push(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    others = [RemoteBranch(published.remote, name) for name in ("second", "third")]
+    checkout.run(
+        "push",
+        "--quiet",
+        published.remote,
+        *[f"HEAD:{branch.reference}" for branch in others],
+    )
+    commit = checkout.commit_at("HEAD")
+
+    refused = checkout.delete_remote_branches(
+        published.remote,
+        {branch.name: commit for branch in [published, *others]},
+    )
+
+    assert (refused, [checkout.has_remote_branch(b) for b in [published, *others]]) == (
+        [],
+        [False, False, False],
+    )
+
+
+def test_a_branch_that_moved_is_kept_and_named(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    before = checkout.run("rev-parse", "HEAD~0").strip()
+    checkout.run("commit", "--quiet", "--allow-empty", "--message", "Move on")
+    checkout.run("push", "--quiet", published.remote, f"HEAD:{published.reference}")
+
+    refused = checkout.delete_remote_branches(
+        published.remote, {published.name: before}
+    )
+
+    assert (refused, checkout.has_remote_branch(published)) == ([published.name], True)
+
+
 def test_a_fetched_branch_moves_only_its_tracking_reference(
     checkout: GitCommandRunner, published: RemoteBranch
 ):

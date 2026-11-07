@@ -203,13 +203,6 @@ class Repository:
         """
         return f"{self.url}/pull/{number}"
 
-    def issue_url(self, number: int) -> str:
-        """
-        :param number: The issue's number.
-        :return: The issue's page on GitHub.
-        """
-        return f"{self.url}/issues/{number}"
-
     @property
     def settings_url(self) -> str:
         """:return: The repository's settings page on GitHub."""

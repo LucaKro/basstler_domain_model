@@ -16,11 +16,13 @@ from basstler_domain_model.git.exceptions import (
 )
 from basstler_domain_model.git.commands import (
     GitCommandRunner,
+    GitIdentity,
     ProposedPush,
     ReferenceUpdate,
     RemoteBranch,
     RemoteName,
 )
+from basstler_domain_model.locations import GitStateFile
 from basstler_domain_model.repository import Repository
 
 # %% fixtures
@@ -227,6 +229,57 @@ def test_a_fetched_branch_moves_only_its_tracking_reference(
     )
 
 
+def test_a_branch_is_fetched_from_a_url_into_its_remote_s_tracking_reference(
+    checkout: GitCommandRunner, published: RemoteBranch, tmp_path: Path
+):
+    elsewhere = RemoteBranch("elsewhere", published.name)
+
+    checkout.fetch_branch(elsewhere, str(tmp_path / "remote.git")).raise_if_failed()
+
+    assert checkout.commit_at(elsewhere.tracking_reference) == checkout.commit_at(
+        "HEAD"
+    )
+
+
+def test_every_branch_of_a_remote_is_listed_with_its_tip(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    checkout.run("commit", "--quiet", "--allow-empty", "--message", "Move on")
+    checkout.run("push", "--quiet", published.remote, "HEAD:refs/heads/a/nested")
+
+    assert checkout.remote_branch_tips(published.remote) == {
+        "a/nested": checkout.commit_at("HEAD"),
+        published.name: checkout.commit_at("HEAD~1"),
+    }
+
+
+def test_a_push_skipping_the_hook_is_not_refused_by_it(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    hook = checkout.git_path(Path("hooks/pre-push"))
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+    pushed = RemoteBranch(published.remote, "feature")
+
+    refused = checkout.push(ProposedPush(pushed.remote, f"HEAD:{pushed.reference}"))
+    skipped = checkout.push(
+        ProposedPush(pushed.remote, f"HEAD:{pushed.reference}", runs_push_hook=False)
+    )
+
+    assert (refused.succeeded, skipped.succeeded) == (False, True)
+
+
+def test_the_reflog_names_what_wrote_a_reference(
+    checkout: GitCommandRunner, published: RemoteBranch
+):
+    assert checkout.reflog_entries(published.tracking_reference) == ["update by push"]
+
+
+def test_a_reference_without_a_reflog_has_no_entries(checkout: GitCommandRunner):
+    assert checkout.reflog_entries("refs/remotes/nowhere/main") == []
+
+
 def test_a_branch_only_ending_in_another_s_reference_is_not_its_tip(
     checkout: GitCommandRunner, published: RemoteBranch
 ) -> None:
@@ -431,6 +484,79 @@ def test_a_conflicting_merge_names_its_files_and_is_undone(
     assert checkout.run("status", "--porcelain") == ""
 
 
+@pytest.fixture
+def conflicting(checkout: GitCommandRunner) -> GitCommandRunner:
+    """:return: The checkout, on ``mine``, in the middle of a merge of ``other``
+    conflicting in ``README.md``."""
+    for branch, text in (("other", "theirs\n"), ("mine", "ours\n")):
+        checkout.run("switch", "--quiet", "--create", branch, "main")
+        (checkout.working_directory / "README.md").write_text(text)
+        checkout.commit(f"Change README on {branch}", [Path("README.md")])
+    checkout.merge("other", "Merge other into mine")
+    return checkout
+
+
+def test_a_conflicting_merge_is_in_progress(conflicting: GitCommandRunner):
+    assert conflicting.merge_in_progress()
+
+
+def test_no_merge_is_in_progress_in_a_plain_checkout(checkout: GitCommandRunner):
+    assert not checkout.merge_in_progress()
+
+
+def test_a_merge_in_progress_keeps_the_message_it_was_started_with(
+    conflicting: GitCommandRunner,
+):
+    assert conflicting.merge_message() == "Merge other into mine"
+
+
+def test_a_resolved_merge_is_committed_with_both_parents(
+    conflicting: GitCommandRunner,
+):
+    (conflicting.working_directory / "README.md").write_text("both\n")
+    conflicting.stage([Path("README.md")])
+
+    commit = conflicting.commit_staged(conflicting.merge_message())
+
+    assert conflicting.parents_of(commit) == (
+        conflicting.commit_at("HEAD~1"),
+        conflicting.commit_at("other"),
+    )
+
+
+def test_a_changed_tracked_file_is_an_uncommitted_change(checkout: GitCommandRunner):
+    (checkout.working_directory / "README.md").write_text("edited\n")
+
+    assert checkout.has_uncommitted_changes()
+
+
+def test_an_untracked_file_is_no_uncommitted_change(checkout: GitCommandRunner):
+    (checkout.working_directory / "new.txt").write_text("new\n")
+
+    assert not checkout.has_uncommitted_changes()
+
+
+def test_the_commits_one_reference_holds_beyond_another_are_counted(
+    checkout: GitCommandRunner,
+):
+    commit_on(checkout, "ahead", "main", "first.txt")
+    (checkout.working_directory / "second.txt").write_text("second\n")
+    checkout.commit("second.txt", [Path("second.txt")])
+
+    assert (
+        checkout.commits_between("main", "ahead"),
+        checkout.commits_between("ahead", "main"),
+    ) == (2, 0)
+
+
+def test_a_git_directory_file_is_found_inside_the_checkout_s_git_directory(
+    checkout: GitCommandRunner,
+):
+    assert checkout.git_path(GitStateFile.MERGE_MESSAGE) == (
+        checkout.working_directory / ".git" / GitStateFile.MERGE_MESSAGE
+    )
+
+
 def test_a_kept_reset_keeps_uncommitted_changes(checkout: GitCommandRunner):
     commit_on(checkout, "rewritten", "main", "rewritten.txt")
     commit_on(checkout, "mine", "main", "mine.txt")
@@ -472,6 +598,25 @@ def test_a_commit_of_a_removed_directory_removes_its_files(
     assert checkout.run("ls-tree", "--name-only", commit) == "README.md"
 
 
+# %% finding the checkout
+
+
+def test_a_directory_inside_a_checkout_finds_the_checkout_s_root(
+    checkout: GitCommandRunner,
+):
+    inside = checkout.working_directory / "nested"
+    inside.mkdir()
+
+    assert GitCommandRunner.enclosing(inside) == checkout
+
+
+def test_a_directory_outside_every_checkout_finds_none(tmp_path: Path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    assert GitCommandRunner.enclosing(outside) is None
+
+
 # %% identity
 
 
@@ -481,7 +626,7 @@ def test_the_identity_variables_take_precedence_over_the_configuration(
     monkeypatch.setenv(GitIdentityVariable.AUTHOR_NAME, "Environment Author")
     monkeypatch.setenv(GitIdentityVariable.AUTHOR_EMAIL, "environment@example.com")
 
-    author = checkout.run("var", "GIT_AUTHOR_IDENT")
+    author = checkout.identity(GitIdentity.AUTHOR)
 
     assert author.startswith("Environment Author <environment@example.com>")
 

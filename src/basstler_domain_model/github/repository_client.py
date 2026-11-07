@@ -27,6 +27,7 @@ from basstler_domain_model.github.rest_models import (
     BranchComparison,
     RestPullRequest,
     RestRepository,
+    SearchedPullRequest,
     Workflow,
     WorkflowRun,
 )
@@ -231,6 +232,24 @@ class ForkDetails(ABC):
     def upstream(self) -> Repository | None:
         """
         :return: The repository it was forked from, ``None`` when it is no fork.
+        """
+
+
+@dataclass(frozen=True)
+class PullRequestSearch(ABC):
+    """
+    Finding a repository's pull requests through GitHub's search, which a cloud
+    session reaches on repositories its proxy refuses otherwise.
+    """
+
+    @abstractmethod
+    def search_pull_requests_from(
+        self, author: str, branch: str
+    ) -> list[SearchedPullRequest]:
+        """
+        :param author: Who opened them.
+        :param branch: The branch they were opened from, on any repository.
+        :return: The repository's pull requests opened so, in any state.
         """
 
 
@@ -590,6 +609,7 @@ class GitHubRepository(
     CommitChecks,
     RepositoryLabels,
     RepositoryWorkflows,
+    PullRequestSearch,
     CredentialHolder,
 ):
     """
@@ -761,6 +781,14 @@ class GitHubRepository(
             Workflow.from_json(entry)
             for page in self.api.get_pages(self.route.listing(self.route.workflows))
             for entry in page[RestJSONKey.WORKFLOWS]
+        ]
+
+    def search_pull_requests_from(
+        self, author: str, branch: str
+    ) -> list[SearchedPullRequest]:
+        found = self.api.get(self.route.pull_request_search(author, branch))
+        return [
+            SearchedPullRequest.from_json(item) for item in found[RestJSONKey.ITEMS]
         ]
 
     def runs_on(self, branch: str) -> list[WorkflowRun]:

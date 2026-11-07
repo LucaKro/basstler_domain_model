@@ -124,6 +124,11 @@ class DatasetLocation(PathEnumeration):
     A branch's runs: one failed, one still going.
     """
 
+    SEARCHED_PULL_REQUESTS = DIRECTORY / "api" / "searched-pull-requests.json"
+    """
+    Pull requests an issue search found: one merged, one open.
+    """
+
     REFUSAL = DIRECTORY / "api" / "refusal.json"
     """
     The body of a refused call.

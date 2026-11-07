@@ -99,6 +99,32 @@ def test_a_repository_forked_from_none_has_no_upstream():
         assert client(api).upstream() is None
 
 
+# %% searched pull requests
+
+
+def test_pull_requests_opened_from_a_branch_are_searched_with_when_they_merged():
+    path = ROUTE.pull_request_search("LucaKro", "feature")
+    answers = {
+        ("GET", f"/{path}"): RecordedAnswer.from_file(
+            HTTPStatus.OK, DatasetLocation.SEARCHED_PULL_REQUESTS
+        )
+    }
+
+    with ReplayedApi(answers) as api:
+        found = client(api).search_pull_requests_from("LucaKro", "feature")
+
+    items = json.loads(DatasetLocation.SEARCHED_PULL_REQUESTS.read_text())[
+        RestJSONKey.ITEMS
+    ]
+    assert [(each.number, each.merged_at) for each in found] == [
+        (
+            item[RestJSONKey.NUMBER],
+            item[RestJSONKey.PULL_REQUEST][RestJSONKey.MERGED_AT],
+        )
+        for item in items
+    ]
+
+
 # %% Actions workflows
 
 

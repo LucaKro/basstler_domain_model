@@ -215,6 +215,13 @@ class Repository:
         """:return: The repository's settings page on GitHub."""
         return f"{self.url}/settings"
 
+    def issue_url(self, number: int) -> str:
+        """
+        :param number: An issue or pull request of the repository.
+        :return: Its page on GitHub; GitHub opens a pull request's own page from it.
+        """
+        return f"{self.url}/issues/{number}"
+
     def workflow_run_url(self, run: int) -> str:
         """
         :param run: The Actions workflow run's own number.

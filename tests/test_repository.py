@@ -93,6 +93,10 @@ def test_a_workflow_run_url_is_the_run_s_page_under_the_repository_s_actions():
     assert REPOSITORY.workflow_run_url(7) == f"{REPOSITORY.url}/actions/runs/7"
 
 
+def test_an_issue_url_is_the_issue_s_page_under_the_repository():
+    assert REPOSITORY.issue_url(7) == f"{REPOSITORY.url}/issues/7"
+
+
 # %% REST paths
 
 

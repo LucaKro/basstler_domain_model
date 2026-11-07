@@ -5,12 +5,14 @@ set of labels extends, and for :class:`basstler_domain_model.github.labels.Label
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from enum import ReprEnum
 
 import pytest
 
 from basstler_domain_model.github.exceptions import ContradictoryLabelWriteError
 from basstler_domain_model.github.labels import GitHubLabel, LabelWrite
+from basstler_domain_model.github.repository_client import RepositoryLabels
 
 # %% an enumeration of labels
 
@@ -79,3 +81,64 @@ def test_labels_are_kept_in_the_order_carried_then_added() -> None:
         "d",
         "c",
     )
+
+
+# %% creating the labels a repository lacks
+
+
+@dataclass(frozen=True)
+class LabelsInMemory(RepositoryLabels):
+    """
+    A repository's labels, kept in memory, recording each label created.
+    """
+
+    present: set[str]
+    """
+    The labels the repository carries.
+    """
+
+    created: list[GitHubLabel] = field(default_factory=list)
+    """
+    Each label created, in order.
+    """
+
+    def labels(self) -> set[str]:
+        return set(self.present)
+
+    def create_label(self, label: GitHubLabel) -> None:
+        self.present.add(label)
+        self.created.append(label)
+
+
+class WaitingLabel(GitHubLabel, ReprEnum):
+    """
+    Labels of a kind a repository carries some of.
+    """
+
+    def __new__(cls, label: str, description: str) -> WaitingLabel:
+        """
+        :param label: The label's name.
+        :param description: What it means.
+        :return: The member.
+        """
+        member = str.__new__(cls, label)
+        member._value_ = label
+        member.description = description
+        return member
+
+    BLOCKED = ("blocked", "Waiting on something else")
+    """
+    A label the repository lacks.
+    """
+    WAITING = ("waiting", "Waiting on its author")
+    """
+    A label the repository carries already.
+    """
+
+
+def test_only_the_labels_a_repository_lacks_are_created():
+    repository = LabelsInMemory({WaitingLabel.WAITING.value})
+
+    repository.create_missing_labels(list(WaitingLabel))
+
+    assert repository.created == [WaitingLabel.BLOCKED]

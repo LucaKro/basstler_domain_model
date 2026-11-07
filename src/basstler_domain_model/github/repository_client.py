@@ -8,7 +8,7 @@ write can be handed a reader and provably cannot.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -128,6 +128,17 @@ class RepositoryLabels(ABC):
     @abstractmethod
     def create_label(self, label: GitHubLabel) -> None:
         """:param label: The label to add, created with its description."""
+
+    def create_missing_labels(self, labels: Iterable[GitHubLabel]) -> None:
+        """
+        Create each of the labels the repository does not carry yet.
+
+        :param labels: The labels the repository has to carry.
+        """
+        present = self.labels()
+        for label in labels:
+            if label not in present:
+                self.create_label(label)
 
 
 @dataclass(frozen=True)

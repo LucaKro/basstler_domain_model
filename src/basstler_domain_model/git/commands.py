@@ -17,6 +17,7 @@ from pathlib import Path
 from basstler_domain_model.class_property import classproperty
 from basstler_domain_model.commands import CommandResult, CommandRunner
 from basstler_domain_model.environment import GitVariable
+from basstler_domain_model.locations import GitStateFile
 from basstler_domain_model.repository import Repository
 from basstler_domain_model.git.exceptions import (
     GitCommandFailed,
@@ -41,6 +42,37 @@ class IntegrationStrategy(StrEnum):
     REBASE = "rebase"
     """
     Replay the branch onto the other branch's tip, which rewrites published history.
+    """
+
+
+# %% who a commit records
+
+
+class GitIdentity(StrEnum):
+    """
+    The identities a commit records, as ``git var`` names them.
+    """
+
+    AUTHOR = "GIT_AUTHOR_IDENT"
+    """
+    Who wrote the change.
+    """
+
+    COMMITTER = "GIT_COMMITTER_IDENT"
+    """
+    Who recorded the commit.
+    """
+
+
+class MergeReference(StrEnum):
+    """
+    The references git sets while a merge is in progress.
+    """
+
+    MERGED = "MERGE_HEAD"
+    """
+    The commit being merged in, set from the start of a merge until it is committed or
+    undone.
     """
 
 
@@ -186,6 +218,11 @@ class ProposedPush:
     Whether the local branch published then tracks the branch it was published to.
     """
 
+    runs_push_hook: bool = True
+    """
+    Whether the checkout's ``pre-push`` hook may refuse the push.
+    """
+
 
 # %% what a push changes
 
@@ -265,6 +302,16 @@ class GitCommandRunner:
         cls(checkout.parent).run("clone", "--quiet", url, str(checkout))
         return cls(checkout)
 
+    @classmethod
+    def enclosing(cls, directory: Path) -> GitCommandRunner | None:
+        """
+        :param directory: A directory.
+        :return: Runs git at the root of the checkout the directory is inside, ``None``
+            when it is inside none.
+        """
+        root = cls(directory).attempt("rev-parse", "--show-toplevel")
+        return cls(Path(root.output)) if root.succeeded else None
+
     def attempt(
         self, *arguments: str, environment: Mapping[str, str] | None = None
     ) -> GitCommandResult:
@@ -310,6 +357,15 @@ class GitCommandRunner:
         )
         return Path(common_directory) / location
 
+    def git_path(self, location: Path) -> Path:
+        """
+        :param location: A file inside the git directory, relative to it.
+        :return: Where it is for this checkout, which may differ between worktrees.
+        """
+        return self.working_directory / self.run(
+            "rev-parse", "--git-path", str(location)
+        )
+
     def fetch(self, remote: str, *references: str) -> None:
         """
         Refresh what this checkout knows about a remote.
@@ -319,18 +375,22 @@ class GitCommandRunner:
         """
         self.run("fetch", "--quiet", remote, *references)
 
-    def fetch_branch(self, branch: RemoteBranch) -> GitCommandResult:
+    def fetch_branch(
+        self, branch: RemoteBranch, url: str | None = None
+    ) -> GitCommandResult:
         """
         Fetch one branch into its tracking ref, leaving ``FETCH_HEAD`` alone.
 
         :param branch: The branch to fetch.
+        :param url: The repository fetched from, ``None`` for the branch's remote; the
+            tracking ref is the remote's either way.
         :return: The finished fetch, whose failure is an expected outcome.
         """
         return self.attempt(
             "fetch",
             "--quiet",
             "--no-write-fetch-head",
-            branch.remote,
+            branch.remote if url is None else url,
             f"+{branch.reference}:{branch.tracking_reference}",
         )
 
@@ -358,6 +418,19 @@ class GitCommandRunner:
             ),
             None,
         )
+
+    def remote_branch_tips(self, remote: str) -> dict[str, str]:
+        """
+        :param remote: A remote's name.
+        :return: Each branch the remote has, by its name, and the commit it is at.
+        :raises GitCommandFailed: If the remote cannot be reached.
+        """
+        branches = RemoteBranch(remote, "").reference
+        listed = self.run("ls-remote", "--heads", remote)
+        return {
+            reference.removeprefix(branches): commit
+            for commit, reference in (line.split() for line in listed.splitlines())
+        }
 
     def remote_default_branch(self, remote: str) -> str | None:
         """
@@ -394,6 +467,31 @@ class GitCommandRunner:
         return tuple(
             self.run("rev-list", "--parents", "--max-count=1", commit).split()[1:]
         )
+
+    def commits_between(self, base: str, tip: str) -> int:
+        """
+        :param base: Any reference git can resolve to a commit.
+        :param tip: Another.
+        :return: How many commits *tip* holds that *base* lacks.
+        """
+        return int(self.run("rev-list", "--count", f"{base}..{tip}"))
+
+    def reflog_entries(self, reference: str) -> list[str]:
+        """
+        :param reference: A reference.
+        :return: What wrote it each time, as the reflog says, the latest first; empty
+            when the reference has no reflog.
+        """
+        reflog = self.attempt("reflog", "show", "--format=%gs", reference)
+        return reflog.output.splitlines() if reflog.succeeded else []
+
+    def identity(self, identity: GitIdentity) -> str:
+        """
+        :param identity: Which of the identities a commit records.
+        :return: It, as a commit made now would record it: ``Name <address>`` followed
+            by the time.
+        """
+        return self.run("var", identity)
 
     def tree_of(self, commit: str) -> str:
         """:param commit: Any reference git can resolve to a commit.
@@ -473,6 +571,16 @@ class GitCommandRunner:
         :return: The new commit.
         :raises GitCommandFailed: If nothing changed.
         """
+        self.stage(paths)
+        return self.commit_staged(message)
+
+    def stage(self, paths: Sequence[Path]) -> None:
+        """
+        Stage the current content of some paths for the next commit.
+
+        :param paths: The files and directories to stage, as they are in the working
+            tree; one no longer there is staged as removed.
+        """
         present = [
             str(path) for path in paths if (self.working_directory / path).exists()
         ]
@@ -483,8 +591,24 @@ class GitCommandRunner:
             self.run(
                 "rm", "-r", "--quiet", "--cached", "--ignore-unmatch", "--", *removed
             )
+
+    def commit_staged(self, message: str) -> str:
+        """
+        Commit what is staged, a merge in progress included.
+
+        :param message: The commit message.
+        :return: The new commit.
+        :raises GitCommandFailed: If nothing is staged.
+        """
         self.run("commit", "--quiet", "--message", message)
         return self.commit_at("HEAD")
+
+    def has_uncommitted_changes(self) -> bool:
+        """
+        :return: Whether a tracked file is changed in the working tree or the index;
+            untracked files do not count.
+        """
+        return bool(self.run("status", "--porcelain", "--untracked-files=no"))
 
     def fast_forward(self, reference: str) -> GitCommandResult:
         """
@@ -492,18 +616,6 @@ class GitCommandRunner:
         :return: The finished merge, failed when the branch has commits *reference* lacks.
         """
         return self.attempt("merge", "--quiet", "--ff-only", reference)
-
-    def merge(self, reference: str, message: str) -> GitCommandResult:
-        """
-        Merge a reference into the checked-out branch, committing the merge with the
-        message given, or fast-forwarding when the branch has no commits of its own.
-
-        :param reference: What to merge.
-        :param message: The merge commit's message.
-        :return: The finished merge, failed when it conflicts; :meth:`conflicted_files`
-            names the files then, and :meth:`abort_merge` undoes it.
-        """
-        return self.attempt("merge", "--quiet", "--no-edit", "-m", message, reference)
 
     def conflicted_files(self) -> list[str]:
         """
@@ -542,11 +654,31 @@ class GitCommandRunner:
         return self.run("branch", "--show-current")
 
     def merge(self, reference: str, message: str) -> GitCommandResult:
-        """:param reference: The reference to merge in.
+        """
+        Merge a reference into the checked-out branch, committing the merge with the
+        message given, or fast-forwarding when the branch has no commits of its own.
+
+        :param reference: What to merge.
         :param message: The merge commit's message.
         :return: The finished merge, whose failure is a conflict only when it left
-            unmerged paths behind."""
+            unmerged paths behind; :meth:`conflicted_files` names them then, and
+            :meth:`abort_merge` undoes it.
+        """
         return self.attempt("merge", "--no-edit", "--message", message, reference)
+
+    def merge_in_progress(self) -> bool:
+        """
+        :return: Whether a merge was started and neither committed nor undone yet.
+        """
+        return self.commit_or_none(MergeReference.MERGED) is not None
+
+    def merge_message(self) -> str:
+        """
+        :return: The commit message the merge in progress was started with, without the
+            lines git adds as comments.
+        """
+        lines = self.git_path(GitStateFile.MERGE_MESSAGE).read_text().splitlines()
+        return "\n".join(line for line in lines if not line.startswith("#")).strip()
 
     def trailer_value(self, commit: str, trailer: str) -> str:
         """:param commit: Any reference git can resolve to a commit.
@@ -588,8 +720,15 @@ class GitCommandRunner:
         """
         lease = ["--force-with-lease"] if proposed.with_lease else []
         upstream = ["--set-upstream"] if proposed.sets_upstream else []
+        hook = [] if proposed.runs_push_hook else ["--no-verify"]
         return self.attempt(
-            "push", "--quiet", *lease, *upstream, proposed.remote, proposed.refspec
+            "push",
+            "--quiet",
+            *lease,
+            *upstream,
+            *hook,
+            proposed.remote,
+            proposed.refspec,
         )
 
     def delete_remote_branch(self, branch: RemoteBranch) -> GitCommandResult:

@@ -65,3 +65,17 @@ class PackageLocation(PathEnumeration):
     """
     The GraphQL documents the readers send.
     """
+
+
+# %% git's state
+
+
+class GitStateFile(PathEnumeration):
+    """
+    The files git keeps in a repository's git directory, relative to it.
+    """
+
+    MERGE_MESSAGE = Path("MERGE_MSG")
+    """
+    The commit message a merge in progress was started with.
+    """

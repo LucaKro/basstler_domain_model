@@ -145,6 +145,17 @@ class Remote:
 # %% what a push is allowed to overwrite
 
 
+class PushFlag(StrEnum):
+    """
+    The flag ``git push --porcelain`` starts each reference's line with.
+    """
+
+    DELETED = "-"
+    """
+    The reference was deleted.
+    """
+
+
 @dataclass(frozen=True)
 class ProposedPush:
     """
@@ -587,6 +598,34 @@ class GitCommandRunner:
         :return: The finished push deleting it, whose failure the caller reports.
         """
         return self.push(ProposedPush(branch.remote, f":{branch.reference}"))
+
+    def delete_remote_branches(self, remote: str, tips: Mapping[str, str]) -> list[str]:
+        """
+        Delete branches from a remote in one push, each only while it is still at the
+        commit given.
+
+        :param remote: The remote to delete them from.
+        :param tips: Each branch to delete, and the commit it must still be at.
+        :return: The branches not deleted, in the order given: those that moved, and
+            those the remote refused.
+        """
+        if not tips:
+            return []
+        references = {branch: RemoteBranch(remote, branch).reference for branch in tips}
+        leases = [
+            f"--force-with-lease={references[branch]}:{commit}"
+            for branch, commit in tips.items()
+        ]
+        deletions = [f":{reference}" for reference in references.values()]
+        pushed = self.attempt("push", "--porcelain", *leases, remote, *deletions)
+        deleted = {
+            fields[1].partition(":")[2]
+            for fields in (
+                line.split("\t") for line in pushed.standard_output.splitlines()
+            )
+            if len(fields) > 1 and fields[0] == PushFlag.DELETED
+        }
+        return [branch for branch in tips if references[branch] not in deleted]
 
     def remotes(self) -> list[Remote]:
         """:return: Every remote of the checkout, in the order git lists them."""
